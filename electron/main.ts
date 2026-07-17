@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 //import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -8,8 +8,12 @@ import cors from "cors";
 import * as routes from "./app/routes";
 import { WebSocketServer } from "ws";
 import http from "http";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { isAllowedExternalUrl } from "../src/services/externalLinks";
 
 const PORT = process.env.PORT || 7555;
+const execFileAsync = promisify(execFile);
 
 //const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,12 +43,31 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null;
 
+async function openExternalUrl(url: string) {
+  if (process.platform === "linux") {
+    await execFileAsync("xdg-open", [url]);
+    return;
+  }
+
+  await shell.openExternal(url);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
     },
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalUrl(url)) {
+      void openExternalUrl(url).catch((error) =>
+        console.error("Unable to open external URL", error),
+      );
+    }
+
+    return { action: "deny" };
   });
 
   // Test active push message to Renderer-process.
@@ -92,6 +115,14 @@ expressApp.use("/chat", routes.chatRouter);
 
 const server = http.createServer(expressApp);
 const wss = new WebSocketServer({ server });
+
+ipcMain.handle("open-external-url", async (_event, url: unknown) => {
+  if (!isAllowedExternalUrl(url)) {
+    throw new Error("Blocked external URL");
+  }
+
+  await openExternalUrl(url);
+});
 
 wss.on("connection", (ws, request) => {
   console.log(request.url);

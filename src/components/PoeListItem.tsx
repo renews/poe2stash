@@ -10,6 +10,7 @@ import {
 } from "../services/types";
 import { useState } from "react";
 import { Estimate, isGemItem, PriceChecker } from "../services/PriceEstimator";
+import { createTradeSearchUrl } from "../services/externalLinks";
 
 const ItemNameWithRarity: React.FC<{ item: Poe2Item }> = ({ item }) => {
   const getRarityColor = (rarity: string = "magic") => {
@@ -157,6 +158,7 @@ export function PoeListItem(props: {
 }) {
   const { item } = props;
   const [searchId, setSearchId] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isPriceChecking, setIsPriceChecking] = useState(false);
   const [priceCheckError, setPriceCheckError] = useState<string | null>(null);
   const gemItem = isGemItem(item);
@@ -198,25 +200,33 @@ export function PoeListItem(props: {
     navigator.clipboard.writeText(item.item.name || item.item.typeLine);
   };
 
-  const openSearchInNewWindow = async () => {
+  const openSearchInDefaultBrowser = async () => {
     const itemLeague = item.item?.league || props.league;
+    setSearchError(null);
 
-    if (!searchId) {
-      const matchingItem = await PriceChecker.findMatchingItem(
-        item,
-        itemLeague,
-      );
-      if (matchingItem && matchingItem.id) {
+    try {
+      if (!searchId) {
+        const matchingItem = await PriceChecker.findMatchingItem(
+          item,
+          itemLeague,
+        );
+        if (!matchingItem?.id) {
+          setSearchError("No trade search was created.");
+          return;
+        }
+
         setSearchId(matchingItem.id);
         window.open(
-          `https://www.pathofexile.com/trade2/search/poe2/${itemLeague}/${matchingItem.id}`,
+          createTradeSearchUrl(itemLeague, matchingItem.id),
           "_blank",
         );
+        return;
       }
-    } else {
-      window.open(
-        `https://www.pathofexile.com/trade2/search/poe2/${itemLeague}/${searchId}`,
-        "_blank",
+
+      window.open(createTradeSearchUrl(itemLeague, searchId), "_blank");
+    } catch (error) {
+      setSearchError(
+        error instanceof Error ? error.message : "Unable to open trade search.",
       );
     }
   };
@@ -489,7 +499,7 @@ export function PoeListItem(props: {
         <button className={buttonStyle} onClick={copyNameToClipboard}>
           Copy
         </button>
-        <button onClick={openSearchInNewWindow} className={buttonStyle}>
+        <button onClick={openSearchInDefaultBrowser} className={buttonStyle}>
           Search
         </button>
         {isPriceChecking && (
@@ -499,6 +509,9 @@ export function PoeListItem(props: {
         )}
         {priceCheckError && (
           <p className="text-sm text-red-300 text-left">{priceCheckError}</p>
+        )}
+        {searchError && (
+          <p className="text-sm text-red-300 text-left">{searchError}</p>
         )}
       </div>
     </div>
