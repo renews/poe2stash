@@ -1,6 +1,10 @@
-import { Poe2Item } from "../services/types";
+import {
+  formatItemMod,
+  formatPriceAmount,
+  Poe2Item,
+} from "../services/types";
 import { useState } from "react";
-import { PriceChecker } from "../services/PriceEstimator";
+import { Estimate, PriceChecker } from "../services/PriceEstimator";
 
 const ItemNameWithRarity: React.FC<{ item: Poe2Item }> = ({ item }) => {
   const getRarityColor = (rarity: string = "magic") => {
@@ -31,33 +35,57 @@ export function PoeListItem(props: {
   item: Poe2Item;
   league: string;
   priceSuggestion?: { amount: number; currency: string };
+  priceEstimate?: Estimate;
   onPriceClick?: (item: Poe2Item) => void;
   onRefreshClick?: (item: Poe2Item) => void;
 }) {
   const { item } = props;
   const [searchId, setSearchId] = useState<string | null>(null);
+  const [isPriceChecking, setIsPriceChecking] = useState(false);
+  const [priceCheckError, setPriceCheckError] = useState<string | null>(null);
 
   const copyNameToClipboard = () => {
     navigator.clipboard.writeText(item.item.name || item.item.typeLine);
   };
 
   const openSearchInNewWindow = async () => {
+    const itemLeague = item.item?.league || props.league;
+
     if (!searchId) {
-      const matchingItem = await PriceChecker.findMatchingItem(item, props.league);
+      const matchingItem = await PriceChecker.findMatchingItem(item, itemLeague);
       if (matchingItem && matchingItem.id) {
         setSearchId(matchingItem.id);
         window.open(
-          `https://www.pathofexile.com/trade2/search/poe2/${props.league}/${matchingItem.id}`,
+          `https://www.pathofexile.com/trade2/search/poe2/${itemLeague}/${matchingItem.id}`,
           "_blank",
         );
       }
     } else {
       window.open(
-        `https://www.pathofexile.com/trade2/search/poe2/${props.league}/${searchId}`,
+        `https://www.pathofexile.com/trade2/search/poe2/${itemLeague}/${searchId}`,
         "_blank",
       );
     }
   };
+
+  const handlePriceClick = async () => {
+    if (!props.onPriceClick || isPriceChecking) return;
+
+    setIsPriceChecking(true);
+    setPriceCheckError(null);
+
+    try {
+      await props.onPriceClick(item);
+    } catch (error) {
+      setPriceCheckError(
+        error instanceof Error ? error.message : "Price check failed.",
+      );
+    } finally {
+      setIsPriceChecking(false);
+    }
+  };
+
+  const itemLeague = item.item?.league || props.league;
 
   const buttonStyle = `bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md transition duration-300 ease-in-out w-full`;
 
@@ -80,7 +108,7 @@ export function PoeListItem(props: {
               {item.listing.price.amount} {item.listing.price.currency}
               {props.priceSuggestion && (
                 <p className="font-semibold text-orange-600">
-                  estimate: ~{Math.round(props.priceSuggestion.amount)}{" "}
+                  estimate: ~{formatPriceAmount(props.priceSuggestion.amount)}{" "}
                   {props.priceSuggestion.currency}
                 </p>
               )}
@@ -101,7 +129,7 @@ export function PoeListItem(props: {
               <ul className="list-none text-sm text-left space-y-1">
                 {item.item.implicitMods?.map((mod, index) => (
                   <li key={index} className="text-blue-200">
-                    {mod}
+                    {formatItemMod(mod)}
                   </li>
                 ))}
               </ul>
@@ -116,7 +144,7 @@ export function PoeListItem(props: {
               <ul className="list-none text-sm text-left space-y-1">
                 {item.item.enchantMods?.map((mod, index) => (
                   <li key={index} className="text-purple-200">
-                    {mod}
+                    {formatItemMod(mod)}
                   </li>
                 ))}
               </ul>
@@ -128,12 +156,45 @@ export function PoeListItem(props: {
             <ul className="list-none text-sm text-left space-y-1">
               {item.item.explicitMods?.map((mod, index) => (
                 <li key={index} className="text-gray-200">
-                  {mod}
+                  {formatItemMod(mod)}
                 </li>
               ))}
             </ul>
           </div>
         </div>
+
+        {props.priceEstimate && (
+          <details open className="bg-gray-700 p-3 rounded-md mb-4 text-left">
+            <summary className="cursor-pointer font-semibold text-orange-300">
+              Price check used {props.priceEstimate.comparables?.length || 0} listings
+            </summary>
+            <p className="text-sm text-gray-300 mt-2">
+              Search: {props.priceEstimate.search?.name || props.priceEstimate.search?.baseType || "item"}
+              {props.priceEstimate.search?.rarity
+                ? ` (${props.priceEstimate.search.rarity})`
+                : ""}
+              {props.priceEstimate.search?.league
+                ? ` in ${props.priceEstimate.search.league}`
+                : ""}
+            </p>
+            <ul className="text-sm text-gray-200 mt-2 space-y-1">
+              {(props.priceEstimate.comparables || []).map((comparable, index) => (
+                <li key={`${comparable.itemId}-${index}`}>
+                  {comparable.listedAmount} {comparable.listedCurrency}
+                  {comparable.currency !== comparable.listedCurrency && (
+                    <span className="text-gray-400">
+                      {` (~${formatPriceAmount(comparable.amount)} ${comparable.currency})`}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-gray-300 mt-2">
+              Average: {formatPriceAmount(props.priceEstimate.price.amount)} {props.priceEstimate.price.currency}
+              {` | Spread: ${formatPriceAmount(props.priceEstimate.stdDev.amount)} ${props.priceEstimate.stdDev.currency}`}
+            </p>
+          </details>
+        )}
 
         <p className="text-sm text-gray-400 mt-4">
           Stash: {item.listing.stash.name} (x: {item.listing.stash.x}, y:{" "}
@@ -149,10 +210,11 @@ export function PoeListItem(props: {
         </button>
 
         <button
-          onClick={() => props.onPriceClick?.(item)}
-          className={buttonStyle}
+          onClick={handlePriceClick}
+          disabled={isPriceChecking}
+          className={`${buttonStyle} disabled:opacity-50`}
         >
-          Price Check
+          {isPriceChecking ? "Checking..." : "Price Check"}
         </button>
         <button className={buttonStyle} onClick={copyNameToClipboard}>
           Copy
@@ -160,6 +222,14 @@ export function PoeListItem(props: {
         <button onClick={openSearchInNewWindow} className={buttonStyle}>
           Search
         </button>
+        {isPriceChecking && (
+          <p className="text-sm text-blue-300 text-left">
+            Searching {itemLeague} listings...
+          </p>
+        )}
+        {priceCheckError && (
+          <p className="text-sm text-red-300 text-left">{priceCheckError}</p>
+        )}
       </div>
     </div>
   );

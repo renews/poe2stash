@@ -50,6 +50,7 @@ export class Poe2TradeClient {
 
     const payload = {
       query: {
+        name: searchParams.name,
         type: searchParams.baseType,
         status: { option: searchParams.status || "any" },
         stats: [
@@ -58,9 +59,10 @@ export class Poe2TradeClient {
             filters: searchParams?.explicit
               ?.map((mod) => ({
                 id: mod.id,
-                value: { min: mod.min, max: mod.max },
-              }))
-              .filter((mod) => mod.value.min || mod.value.max),
+                ...(mod.min !== undefined || mod.max !== undefined
+                  ? { value: { min: mod.min, max: mod.max } }
+                  : {}),
+              })),
           },
         ],
         filters: {

@@ -36,9 +36,11 @@ export class PriceCheckAllItems extends Job<Estimate> {
           };
         } catch (error: any) {
           console.error(error);
-          if(error?.response?.data) {
-            this.error = error.response.data?.error?.message || error.response.data;
-          }
+          this.error =
+            error?.response?.data?.error?.message ||
+            error?.response?.data ||
+            error?.message ||
+            "No comparable listings found";
         }
       }
     }

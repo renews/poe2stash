@@ -56,7 +56,12 @@ chatRouter.post("/", (req, res) => {
 
 // Route to parse chat offers
 chatRouter.get("/offers", (_req, res) => {
-  if (!config.chatPath || !fs.existsSync(config.chatPath)) {
+  if (!config.chatPath) {
+    res.json([]);
+    return;
+  }
+
+  if (!fs.existsSync(config.chatPath)) {
     res.status(400).send("Chat file path not defined or does not exist");
     return;
   }

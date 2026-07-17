@@ -159,6 +159,7 @@ const MainPage: React.FC = () => {
           onPriceClick={priceCheckItem}
           onRefreshClick={refreshItem}
           priceSuggestion={priceEstimates[item.id]?.price}
+          priceEstimate={priceEstimates[item.id]}
         />
       ))}
     </div>

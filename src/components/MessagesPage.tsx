@@ -208,6 +208,7 @@ const MessagesPage: React.FC = () => {
                 onPriceClick={priceCheckItem}
                 onRefreshClick={refreshItem}
                 priceSuggestion={priceEstimates[o.found.id]?.price}
+                priceEstimate={priceEstimates[o.found.id]}
               />
             )}
             <div className="flex flex-col items-start mt-2">

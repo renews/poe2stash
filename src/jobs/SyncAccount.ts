@@ -84,6 +84,7 @@ export class SyncAccount extends Job<string[]> {
           const exchangeRate = await PriceChecker.avgExchangeRate(
             currency,
             lastItemPriceCurrency,
+            this.league,
           );
           // convert everything to exalted price
           lastItemPrice = exchangeRate * lastItemPrice;

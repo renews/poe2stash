@@ -1,4 +1,5 @@
 export type Poe2ItemSearch = Partial<{
+  name: string;
   baseType: string;
   category: string;
   rarity: string;
@@ -109,6 +110,30 @@ export type Price = {
   currency: string;
 };
 
+export function formatPriceAmount(amount: number): string {
+  if (!Number.isFinite(amount)) {
+    return "n/a";
+  }
+
+  const absoluteAmount = Math.abs(amount);
+  const decimals =
+    absoluteAmount >= 100 ? 0 : absoluteAmount >= 1 ? 2 : absoluteAmount >= 0.1 ? 3 : 4;
+
+  return amount.toFixed(decimals).replace(/\.?0+$/, "");
+}
+
+export type ItemMod =
+  | string
+  | {
+      description: string;
+      hash: string;
+      mods: unknown[];
+    };
+
+export function formatItemMod(mod: ItemMod): string {
+  return typeof mod === "string" ? mod : mod.description;
+}
+
 export interface Poe2Item {
   id: string;
   listing: {
@@ -147,9 +172,9 @@ export interface Poe2Item {
     identified: boolean;
     properties: ItemProperty[];
     requirements: ItemRequirement[];
-    implicitMods?: string[];
-    explicitMods?: string[];
-    enchantMods?: string[];
+    implicitMods?: ItemMod[];
+    explicitMods?: ItemMod[];
+    enchantMods?: ItemMod[];
     frameType: number;
     extended: {
       mods: {
