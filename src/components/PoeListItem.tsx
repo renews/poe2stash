@@ -1,6 +1,7 @@
 import {
   formatItemMod,
   formatPriceAmount,
+  ModifierSelection,
   Poe2Item,
 } from "../services/types";
 import { useState } from "react";
@@ -31,18 +32,135 @@ const ItemNameWithRarity: React.FC<{ item: Poe2Item }> = ({ item }) => {
   );
 };
 
+type ModifierKind = keyof ModifierSelection;
+
+const ComparableItemTooltip: React.FC<{ item: Poe2Item }> = ({ item }) => {
+  const renderMods = (mods: Poe2Item["item"]["explicitMods"]) =>
+    mods?.map((mod, index) => (
+      <li key={index}>{formatItemMod(mod)}</li>
+    ));
+
+  return (
+    <div className="pointer-events-none invisible absolute left-0 top-full z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-md border border-gray-500 bg-gray-900 p-3 text-left text-xs text-gray-100 shadow-2xl group-hover:visible group-focus-within:visible">
+      <div className="flex items-start gap-3">
+        <img
+          src={item.item.icon}
+          alt={item.item.name || item.item.typeLine}
+          className="h-12 w-12 rounded"
+        />
+        <div>
+          <p className="font-semibold text-orange-300">
+            {item.item.name || item.item.typeLine}
+          </p>
+          <p className="text-gray-300">
+            {item.item.rarity} {item.item.typeLine || item.item.baseType}
+          </p>
+          <p className="text-gray-400">
+            Item level {item.item.ilvl} · {item.listing.price.amount}{" "}
+            {item.listing.price.currency}
+          </p>
+        </div>
+      </div>
+
+      {item.item.corrupted && (
+        <p className="mt-2 font-semibold text-red-400">Corrupted</p>
+      )}
+
+      {item.item.properties?.length > 0 && (
+        <ul className="mt-2 space-y-1 text-gray-300">
+          {item.item.properties.map((property, index) => (
+            <li key={index}>
+              {property.name}: {property.values.map((value) => value[0]).join(", ")}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {item.item.implicitMods?.length ? (
+        <div className="mt-2">
+          <p className="font-semibold text-blue-300">Implicit</p>
+          <ul className="space-y-1 text-blue-200">
+            {renderMods(item.item.implicitMods)}
+          </ul>
+        </div>
+      ) : null}
+
+      {item.item.enchantMods?.length ? (
+        <div className="mt-2">
+          <p className="font-semibold text-purple-300">Enchant</p>
+          <ul className="space-y-1 text-purple-200">
+            {renderMods(item.item.enchantMods)}
+          </ul>
+        </div>
+      ) : null}
+
+      {item.item.explicitMods?.length ? (
+        <div className="mt-2">
+          <p className="font-semibold text-gray-300">Explicit</p>
+          <ul className="space-y-1 text-gray-200">
+            {renderMods(item.item.explicitMods)}
+          </ul>
+        </div>
+      ) : null}
+
+      {item.item.sockets?.length ? (
+        <p className="mt-2 text-gray-400">
+          Sockets: {item.item.sockets.length}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
 export function PoeListItem(props: {
   item: Poe2Item;
   league: string;
+  modifierSelection?: ModifierSelection;
+  onModifierSelectionChange?: (selection: ModifierSelection) => void;
   priceSuggestion?: { amount: number; currency: string };
   priceEstimate?: Estimate;
-  onPriceClick?: (item: Poe2Item) => void;
+  onPriceClick?: (
+    item: Poe2Item,
+    selection?: ModifierSelection,
+  ) => void | Promise<void>;
   onRefreshClick?: (item: Poe2Item) => void;
 }) {
   const { item } = props;
   const [searchId, setSearchId] = useState<string | null>(null);
   const [isPriceChecking, setIsPriceChecking] = useState(false);
   const [priceCheckError, setPriceCheckError] = useState<string | null>(null);
+
+  const isModifierSelected = (kind: ModifierKind, index: number) =>
+    props.modifierSelection?.[kind]?.[index] !== false;
+
+  const updateModifierSelection = (
+    kind: ModifierKind,
+    index: number,
+    checked: boolean,
+  ) => {
+    const modifiers =
+      kind === "implicit"
+        ? item.item.implicitMods || []
+        : item.item.explicitMods || [];
+    const current = props.modifierSelection?.[kind] || [];
+    const values = modifiers.map((_modifier, modifierIndex) =>
+      current[modifierIndex] !== false,
+    );
+    values[index] = checked;
+
+    props.onModifierSelectionChange?.({
+      implicit:
+        kind === "implicit"
+          ? values
+          : (props.modifierSelection?.implicit ||
+              (item.item.implicitMods || []).map(() => true)),
+      explicit:
+        kind === "explicit"
+          ? values
+          : (props.modifierSelection?.explicit ||
+              (item.item.explicitMods || []).map(() => true)),
+    });
+  };
 
   const copyNameToClipboard = () => {
     navigator.clipboard.writeText(item.item.name || item.item.typeLine);
@@ -75,7 +193,16 @@ export function PoeListItem(props: {
     setPriceCheckError(null);
 
     try {
-      await props.onPriceClick(item);
+      await props.onPriceClick(item, {
+        implicit: (item.item.implicitMods || []).map(
+          (_modifier, index) =>
+            props.modifierSelection?.implicit?.[index] !== false,
+        ),
+        explicit: (item.item.explicitMods || []).map(
+          (_modifier, index) =>
+            props.modifierSelection?.explicit?.[index] !== false,
+        ),
+      });
     } catch (error) {
       setPriceCheckError(
         error instanceof Error ? error.message : "Price check failed.",
@@ -129,7 +256,21 @@ export function PoeListItem(props: {
               <ul className="list-none text-sm text-left space-y-1">
                 {item.item.implicitMods?.map((mod, index) => (
                   <li key={index} className="text-blue-200">
-                    {formatItemMod(mod)}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isModifierSelected("implicit", index)}
+                        onChange={(event) =>
+                          updateModifierSelection(
+                            "implicit",
+                            index,
+                            event.target.checked,
+                          )
+                        }
+                        className="form-checkbox mt-1 text-blue-600"
+                      />
+                      <span>{formatItemMod(mod)}</span>
+                    </label>
                   </li>
                 ))}
               </ul>
@@ -156,7 +297,21 @@ export function PoeListItem(props: {
             <ul className="list-none text-sm text-left space-y-1">
               {item.item.explicitMods?.map((mod, index) => (
                 <li key={index} className="text-gray-200">
-                  {formatItemMod(mod)}
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isModifierSelected("explicit", index)}
+                      onChange={(event) =>
+                        updateModifierSelection(
+                          "explicit",
+                          index,
+                          event.target.checked,
+                        )
+                      }
+                      className="form-checkbox mt-1 text-blue-600"
+                    />
+                    <span>{formatItemMod(mod)}</span>
+                  </label>
                 </li>
               ))}
             </ul>
@@ -176,15 +331,25 @@ export function PoeListItem(props: {
               {props.priceEstimate.search?.league
                 ? ` in ${props.priceEstimate.search.league}`
                 : ""}
+              {` · ${props.priceEstimate.search?.explicitCount || 0} explicit, ${props.priceEstimate.search?.implicitCount || 0} implicit modifiers`}
             </p>
             <ul className="text-sm text-gray-200 mt-2 space-y-1">
               {(props.priceEstimate.comparables || []).map((comparable, index) => (
-                <li key={`${comparable.itemId}-${index}`}>
-                  {comparable.listedAmount} {comparable.listedCurrency}
-                  {comparable.currency !== comparable.listedCurrency && (
-                    <span className="text-gray-400">
-                      {` (~${formatPriceAmount(comparable.amount)} ${comparable.currency})`}
-                    </span>
+                <li
+                  key={`${comparable.itemId}-${index}`}
+                  tabIndex={comparable.item ? 0 : undefined}
+                  className="group relative rounded px-1 py-0.5 hover:bg-gray-600 focus:bg-gray-600"
+                >
+                  <span>
+                    {comparable.listedAmount} {comparable.listedCurrency}
+                    {comparable.currency !== comparable.listedCurrency && (
+                      <span className="text-gray-400">
+                        {` (~${formatPriceAmount(comparable.amount)} ${comparable.currency})`}
+                      </span>
+                    )}
+                  </span>
+                  {comparable.item && (
+                    <ComparableItemTooltip item={comparable.item} />
                   )}
                 </li>
               ))}

@@ -1,16 +1,59 @@
 import axios from "axios";
 import {
   Poe2ExchangeSearch,
+  Poe2CurrencyExchangeOverview,
   Poe2TradeSearch,
   Poe2FetchItems,
   Poe2ItemSearch,
 } from "./types";
+
+export function getCurrencyRateFromOverview(
+  overview: Poe2CurrencyExchangeOverview,
+  iWant: string,
+  iHave: string,
+): number | undefined {
+  if (iWant === iHave) {
+    return 1;
+  }
+
+  const primary = overview.core?.primary || "divine";
+  const primaryValues = new Map(
+    (overview.lines || []).map((line) => [line.id, line.primaryValue]),
+  );
+
+  const getPrimaryValue = (currency: string) => {
+    if (currency === primary) {
+      return 1;
+    }
+
+    const lineValue = primaryValues.get(currency);
+    if (typeof lineValue === "number" && Number.isFinite(lineValue) && lineValue > 0) {
+      return lineValue;
+    }
+
+    const rate = overview.core?.rates?.[currency];
+    return typeof rate === "number" && Number.isFinite(rate) && rate > 0
+      ? 1 / rate
+      : undefined;
+  };
+
+  const wantValue = getPrimaryValue(iWant);
+  const haveValue = getPrimaryValue(iHave);
+
+  if (!wantValue || !haveValue) {
+    return undefined;
+  }
+
+  return haveValue / wantValue;
+}
 
 export class Poe2TradeClient {
   port = 7555;
   baseUrl = `http://localhost:${this.port}`;
   tradeUrl = "www.pathofexile.com/api/trade2";
   apiUrl = `${this.baseUrl}/proxy/${this.tradeUrl}`;
+  economyUrl = "poe.ninja/poe2/api/economy/exchange/current/overview";
+  economyApiUrl = `${this.baseUrl}/proxy/${this.economyUrl}`;
   league = "Standard";
 
   async getAccountItems(account: string, price = 1, currency = "exalted", league?: string) {
@@ -56,13 +99,15 @@ export class Poe2TradeClient {
         stats: [
           {
             type: "and",
-            filters: searchParams?.explicit
-              ?.map((mod) => ({
-                id: mod.id,
-                ...(mod.min !== undefined || mod.max !== undefined
-                  ? { value: { min: mod.min, max: mod.max } }
-                  : {}),
-              })),
+            filters: [
+              ...(searchParams?.explicit || []),
+              ...(searchParams?.implicit || []),
+            ].map((mod) => ({
+              id: mod.id,
+              ...(mod.min !== undefined || mod.max !== undefined
+                ? { value: { min: mod.min, max: mod.max } }
+                : {}),
+            })),
           },
         ],
         filters: {
@@ -214,6 +259,17 @@ export class Poe2TradeClient {
     console.log("Requesting", url, "iWant", iWant, "iHave", iHave);
     const response = await axios.post(url, payload);
     return response.data as Poe2ExchangeSearch;
+  }
+
+  async getCurrencyExchangeOverview(league?: string) {
+    const params = new URLSearchParams({
+      league: league || this.league,
+      type: "Currency",
+    });
+    const url = `${this.economyApiUrl}?${params.toString()}`;
+    console.log("Requesting currency overview", url);
+    const response = await axios.get(url);
+    return response.data as Poe2CurrencyExchangeOverview;
   }
 }
 

@@ -1,12 +1,13 @@
 import { Job } from "./Job";
 import { Estimate, PriceChecker } from "../services/PriceEstimator";
-import { Poe2Item } from "../services/types";
+import { ModifierSelection, Poe2Item } from "../services/types";
 
 export class PriceCheckAllItems extends Job<Estimate> {
   constructor(
     private filteredItems: Poe2Item[],
     private skipAlreadyChecked = true,
     private league?: string,
+    private modifierSelections: Record<string, ModifierSelection> = {},
   ) {
     super(
       "price-check-items",
@@ -20,7 +21,9 @@ export class PriceCheckAllItems extends Job<Estimate> {
     for (let i = 0; i < this.filteredItems.length; i++) {
       const item = this.filteredItems[i];
 
-      if (cached[item.id] && this.skipAlreadyChecked) {
+      const hasModifierSelection = Boolean(this.modifierSelections[item.id]);
+
+      if (cached[item.id] && this.skipAlreadyChecked && !hasModifierSelection) {
         yield {
           total: this.filteredItems.length,
           current: i + 1,
@@ -28,7 +31,11 @@ export class PriceCheckAllItems extends Job<Estimate> {
         };
       } else {
         try {
-          const price = await PriceChecker.estimateItemPrice(item, this.league);
+          const price = await PriceChecker.estimateItemPrice(
+            item,
+            this.league,
+            this.modifierSelections[item.id],
+          );
           yield {
             total: this.filteredItems.length,
             current: i + 1,

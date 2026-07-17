@@ -4,7 +4,9 @@ import {
   getItemSearchMetadata,
   getExchangeRateCacheKey,
   PriceChecker,
+  selectSelectedModifiers,
 } from "../src/services/PriceEstimator";
+import { getCurrencyRateFromOverview } from "../src/services/Poe2TradeClient";
 import { Poe2Item } from "../src/services/types";
 import { formatPriceAmount } from "../src/services/types";
 
@@ -81,4 +83,37 @@ test("keeps one-currency comparisons in their listed currency", () => {
   expect(getComparablePriceCurrency("exalted", ["chaos", "divine"])).toBe(
     "exalted",
   );
+});
+
+test("converts currency in the requested direction", () => {
+  const overview = {
+    core: {
+      primary: "divine",
+      rates: { chaos: 5.56, exalted: 316.2 },
+    },
+    lines: [
+      { id: "divine", primaryValue: 1 },
+      { id: "chaos", primaryValue: 0.1798 },
+      { id: "exalted", primaryValue: 0.003162 },
+    ],
+  };
+
+  expect(getCurrencyRateFromOverview(overview, "chaos", "divine")).toBeCloseTo(
+    5.56,
+    2,
+  );
+  expect(getCurrencyRateFromOverview(overview, "divine", "chaos")).toBeCloseTo(
+    0.1798,
+    3,
+  );
+});
+
+test("excludes deselected modifiers while keeping all selected by default", () => {
+  const modifiers = ["implicit", "explicit", "another explicit"];
+
+  expect(selectSelectedModifiers(modifiers)).toEqual(modifiers);
+  expect(selectSelectedModifiers(modifiers, [true, false, true])).toEqual([
+    "implicit",
+    "another explicit",
+  ]);
 });

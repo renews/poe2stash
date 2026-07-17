@@ -24,6 +24,8 @@ const MainPage: React.FC = () => {
     setIsLiveMonitoring,
     isPriceChecking,
     priceEstimates,
+    modifierSelections,
+    setModifierSelection,
     errorMessage,
     setErrorMessage,
     jobs,
@@ -158,6 +160,10 @@ const MainPage: React.FC = () => {
           league={selectedLeague}
           onPriceClick={priceCheckItem}
           onRefreshClick={refreshItem}
+          modifierSelection={modifierSelections[item.id]}
+          onModifierSelectionChange={(selection) =>
+            setModifierSelection(item.id, selection)
+          }
           priceSuggestion={priceEstimates[item.id]?.price}
           priceEstimate={priceEstimates[item.id]}
         />

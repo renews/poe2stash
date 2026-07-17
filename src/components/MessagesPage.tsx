@@ -19,6 +19,8 @@ const MessagesPage: React.FC = () => {
     selectedLeague,
     refreshItem,
     priceEstimates,
+    modifierSelections,
+    setModifierSelection,
     jobs,
     setJobs,
     setErrorMessage,
@@ -207,6 +209,10 @@ const MessagesPage: React.FC = () => {
                 key={o.found.id}
                 onPriceClick={priceCheckItem}
                 onRefreshClick={refreshItem}
+                modifierSelection={modifierSelections[o.found.id]}
+                onModifierSelectionChange={(selection) =>
+                  setModifierSelection(o.found.id, selection)
+                }
                 priceSuggestion={priceEstimates[o.found.id]?.price}
                 priceEstimate={priceEstimates[o.found.id]}
               />

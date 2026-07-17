@@ -7,6 +7,7 @@ export type Poe2ItemSearch = Partial<{
   quality: number;
 
   explicit?: Array<{ id: string; min?: number; max?: number }>;
+  implicit?: Array<{ id: string; min?: number; max?: number }>;
 
   // equipment
   ar: number;
@@ -61,6 +62,17 @@ export interface Poe2FetchItems {
 export interface Poe2ExchangeSearch {
   id: string;
   result: Record<string, ExchangeItem>;
+}
+
+export interface Poe2CurrencyExchangeOverview {
+  core?: {
+    primary?: string;
+    rates?: Record<string, number>;
+  };
+  lines?: Array<{
+    id: string;
+    primaryValue: number;
+  }>;
 }
 
 export interface ExchangeItem {
@@ -134,6 +146,11 @@ export function formatItemMod(mod: ItemMod): string {
   return typeof mod === "string" ? mod : mod.description;
 }
 
+export type ModifierSelection = {
+  implicit: boolean[];
+  explicit: boolean[];
+};
+
 export interface Poe2Item {
   id: string;
   listing: {
@@ -164,6 +181,7 @@ export interface Poe2Item {
     icon: string;
     league: string;
     id: string;
+    sockets?: Array<unknown>;
     name: string;
     typeLine: string;
     baseType: string;

@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { Poe2Trade } from "../services/poe2trade";
 import { PriceChecker, Estimate } from "../services/PriceEstimator";
-import { Poe2Item } from "../services/types";
+import { ModifierSelection, Poe2Item } from "../services/types";
 import { SyncAccount } from "../jobs/SyncAccount";
 import { RefreshAllItems } from "../jobs/RefreshAllItems";
 import { PriceCheckAllItems } from "../jobs/PriceCheckAllItems";
@@ -34,13 +34,18 @@ interface AppContextType {
   setIsLiveMonitoring: Dispatch<SetStateAction<boolean>>;
   isPriceChecking: boolean;
   priceEstimates: Record<string, Estimate>;
+  modifierSelections: Record<string, ModifierSelection>;
+  setModifierSelection: (itemId: string, selection: ModifierSelection) => void;
   errorMessage: string | null;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   jobs: Job<any>[];
   setJobs: Dispatch<SetStateAction<Job<any>[]>>;
   getItems: (name: string) => Promise<void>;
   filterByStash: (stash: string) => void;
-  priceCheckItem: (item: Poe2Item) => Promise<void>;
+  priceCheckItem: (
+    item: Poe2Item,
+    selection?: ModifierSelection,
+  ) => Promise<void>;
   refreshItem: (item: Poe2Item) => Promise<void>;
   refreshAllItems: () => Promise<void>;
   priceCheckAllItems: () => Promise<void>;
@@ -74,6 +79,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
   const [priceEstimates, setPriceEstimates] = useState<
     Record<string, Estimate>
   >({});
+  const [modifierSelections, setModifierSelections] = useState<
+    Record<string, ModifierSelection>
+  >({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job<any>[]>([]);
 
@@ -102,8 +110,25 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     setSelectedStash(stash);
   };
 
-  const priceCheckItem = async (item: Poe2Item) => {
-    const price = await PriceChecker.estimateItemPrice(item, selectedLeague);
+  const setModifierSelection = (
+    itemId: string,
+    selection: ModifierSelection,
+  ) => {
+    setModifierSelections((current) => ({
+      ...current,
+      [itemId]: selection,
+    }));
+  };
+
+  const priceCheckItem = async (
+    item: Poe2Item,
+    selection = modifierSelections[item.id],
+  ) => {
+    const price = await PriceChecker.estimateItemPrice(
+      item,
+      selectedLeague,
+      selection,
+    );
     setPriceEstimates(PriceChecker.getCachedEstimates());
     console.log(price);
   };
@@ -126,7 +151,12 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const priceCheckAllItems = async () => {
     setIsPriceChecking(true);
-    const priceCheck = new PriceCheckAllItems(filteredItems, true, selectedLeague);
+    const priceCheck = new PriceCheckAllItems(
+      filteredItems,
+      true,
+      selectedLeague,
+      modifierSelections,
+    );
 
     priceCheck.onStep = async (progress) => {
       console.log("price check", progress);
@@ -196,6 +226,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLiveMonitoring,
     isPriceChecking,
     priceEstimates,
+    modifierSelections,
+    setModifierSelection,
     errorMessage,
     setErrorMessage,
     jobs,

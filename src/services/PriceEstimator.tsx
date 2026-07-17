@@ -1,10 +1,12 @@
 import {
   formatItemMod,
   ItemMod,
+  ModifierSelection,
   Price,
   Poe2Item,
 } from "./types";
 import { Poe2Trade } from "./poe2trade";
+import { getCurrencyRateFromOverview } from "./Poe2TradeClient";
 import { Cache } from "./Cache";
 import { Stats } from "../data/stats";
 
@@ -14,6 +16,7 @@ export type ComparablePrice = Price & {
   itemId: string;
   listedAmount: number;
   listedCurrency: string;
+  item?: Poe2Item;
 };
 export type Estimate = {
   price: Price;
@@ -25,6 +28,9 @@ export type Estimate = {
     name?: string;
     rarity?: string;
     explicitCount: number;
+    implicitCount?: number;
+    explicitHashes?: string[];
+    implicitHashes?: string[];
   };
 };
 
@@ -33,7 +39,7 @@ export function getExchangeRateCacheKey(
   iHave: string,
   league?: string,
 ) {
-  return `${iWant}_${iHave}_${league || "default"}`;
+  return `v2_${iWant}_${iHave}_${league || "default"}`;
 }
 
 export function getComparablePriceCurrency(
@@ -42,6 +48,13 @@ export function getComparablePriceCurrency(
 ) {
   const uniqueCurrencies = [...new Set(currencies)];
   return uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : preferredCurrency;
+}
+
+export function selectSelectedModifiers<T>(
+  modifiers: T[],
+  selection?: boolean[],
+) {
+  return modifiers.filter((_modifier, index) => selection?.[index] !== false);
 }
 
 function normalizeStatHash(hash: string) {
@@ -108,7 +121,11 @@ class PriceEstimator {
     return topMatch;
   }
 
-  async estimateItemPrice(item: Poe2Item, league?: string) {
+  async estimateItemPrice(
+    item: Poe2Item,
+    league?: string,
+    modifierSelection?: ModifierSelection,
+  ) {
     const itemLeague = item.item?.league || league;
     const { baseType, name, rarity } = getItemSearchMetadata(item);
     if (!baseType) {
@@ -116,6 +133,14 @@ class PriceEstimator {
     }
 
     const parsedMods = this.parseItemMods(item);
+    const selectedExplicits = selectSelectedModifiers(
+      parsedMods.explicits || [],
+      modifierSelection?.explicit,
+    );
+    const selectedImplicits = selectSelectedModifiers(
+      parsedMods.implicits || [],
+      modifierSelection?.implicit,
+    );
     console.log("Estimating price for item in league:", league);
 
     const allPrices: ComparablePrice[] = [];
@@ -123,28 +148,27 @@ class PriceEstimator {
 
     // loop until we have 10 prices or we have no more mods to search
     for (
-      let i = parsedMods?.explicits?.length || 0;
+      let i = selectedExplicits.length;
       i >= 1 && allPrices.length < 10;
       i--
     ) {
-      const topMods = await this.getHighTierMods(item, i);
-
-      const highTierStats = topMods
-        .map((s) => s.magnitudes)
-        .flat()
-        .map((mag) => mag.hash)
-        .map((hash) => parsedMods?.explicits?.find((p) => p.hash === hash))
-        .filter((p) => p);
-      const topStats = highTierStats.length
-        ? highTierStats
-        : (parsedMods.explicits || []).slice(0, i);
+      const { explicit, implicit } = await this.getSelectedSearchMods(
+        item,
+        selectedExplicits,
+        selectedImplicits,
+        i,
+      );
 
       const topMatch = await Poe2Trade.getItemByAttributes({
         status: "securable",
         name,
         rarity,
         baseType,
-        explicit: topStats.map((s) => ({
+        explicit: explicit.map((s) => ({
+          id: s!.hash,
+          ...Poe2Trade.range(s!.value1),
+        })),
+        implicit: implicit.map((s) => ({
           id: s!.hash,
           ...Poe2Trade.range(s!.value1),
         })),
@@ -163,13 +187,17 @@ class PriceEstimator {
       allPrices.push(...topPrices);
     }
 
-    if (!parsedMods.explicits?.length) {
+    if (!selectedExplicits.length) {
       // Items without explicit mods need a base-item lookup instead.
       console.log("fetching normal item", allPrices);
       const normal = await Poe2Trade.getItemByAttributes({
         name,
         rarity,
         baseType,
+        implicit: selectedImplicits.map((s) => ({
+          id: s!.hash,
+          ...Poe2Trade.range(s!.value1),
+        })),
         status: "securable",
       }, itemLeague);
       //await wait(1000);
@@ -196,7 +224,10 @@ class PriceEstimator {
         baseType,
         name,
         rarity,
-        explicitCount: parsedMods.explicits?.length || 0,
+        explicitCount: selectedExplicits.length,
+        implicitCount: selectedImplicits.length,
+        explicitHashes: selectedExplicits.map((modifier) => modifier.hash),
+        implicitHashes: selectedImplicits.map((modifier) => modifier.hash),
       },
     };
 
@@ -212,6 +243,31 @@ class PriceEstimator {
     // we can detect this by the general pattern of item_type, item_rarity, (mod1, mod2, ...modN) => price floor
     // we can also learn the max tiers by performing a search for item_type, mod descending. we should save these facts
     // unique items should be handled by searching for the exact item with the mods equal or greater
+  }
+
+  async getSelectedSearchMods(
+    item: Poe2Item,
+    selectedExplicits: ReturnType<PriceEstimator["parseItemMods"]>["explicits"],
+    selectedImplicits: ReturnType<PriceEstimator["parseItemMods"]>["implicits"],
+    topN: number,
+  ) {
+    const topMods = await this.getHighTierMods(item, topN);
+    const selectedHashes = new Set(
+      selectedExplicits.map((modifier) => modifier.hash),
+    );
+    const highTierStats = topMods
+      .map((s) => s.magnitudes)
+      .flat()
+      .map((mag) => mag.hash)
+      .map((hash) => selectedExplicits.find((p) => p.hash === hash))
+      .filter((p) => p && selectedHashes.has(p.hash));
+
+    return {
+      explicit: highTierStats.length
+        ? highTierStats
+        : selectedExplicits.slice(0, topN),
+      implicit: selectedImplicits,
+    };
   }
 
   async getPricesForItemIds(
@@ -245,6 +301,7 @@ class PriceEstimator {
       itemId: item.id,
       listedAmount: item.listing.price.amount,
       listedCurrency: item.listing.price.currency,
+      item,
     }));
   }
 
@@ -383,13 +440,27 @@ class PriceEstimator {
   async exchangeRate(iWant: string, iHave: string, league?: string) {
     const cached = this.getCachedExchangeRates(iWant, iHave, league);
 
-    if (cached) {
+    if (typeof cached === "number" && Number.isFinite(cached) && cached > 0) {
       return cached;
     }
 
     if (iWant === iHave) {
       await this.cacheExchangeRates(iWant, iHave, 1, league);
       return 1;
+    }
+
+    try {
+      const overview = await Poe2Trade.client.getCurrencyExchangeOverview(
+        league,
+      );
+      const rate = getCurrencyRateFromOverview(overview, iWant, iHave);
+
+      if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
+        await this.cacheExchangeRates(iWant, iHave, rate, league);
+        return rate;
+      }
+    } catch (error) {
+      console.warn("Currency overview unavailable, using trade exchange", error);
     }
 
     const swaps = await Poe2Trade.client.getCurrencySwaps(iWant, iHave, league);
@@ -409,7 +480,16 @@ class PriceEstimator {
       .slice(0, 10);
 
     console.log({ iWant, iHave, amounts, weights });
+
+    if (!prices.length || !weights.length) {
+      throw new Error(`No exchange rate found for ${iHave} to ${iWant}.`);
+    }
+
     const mean = this.weightedAvg(prices, weights);
+
+    if (!Number.isFinite(mean) || mean <= 0) {
+      throw new Error(`Invalid exchange rate found for ${iHave} to ${iWant}.`);
+    }
 
     await this.cacheExchangeRates(iWant, iHave, mean, league);
     return mean;

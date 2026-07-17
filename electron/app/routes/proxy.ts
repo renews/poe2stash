@@ -3,7 +3,7 @@ import { app, net, session, BrowserWindow } from "electron";
 import WebSocket from "ws";
 import { RateLimits } from "../services/RateLimitParser";
 
-const hosts = [{ url: "www.pathofexile.com" }];
+const hosts = [{ url: "www.pathofexile.com" }, { url: "poe.ninja" }];
 let blocked = false;
 const blockedMsg = "This application is being blocked by pathofexile.com";
 
