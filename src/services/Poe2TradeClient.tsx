@@ -63,6 +63,21 @@ export function getCurrencyRateFromOverview(
   return haveValue / wantValue;
 }
 
+export function buildTradeStatFilters(
+  searchParams: Pick<Poe2ItemSearch, "explicit" | "implicit" | "pseudo">,
+) {
+  return [
+    ...(searchParams.explicit || []),
+    ...(searchParams.implicit || []),
+    ...(searchParams.pseudo || []),
+  ].map((mod) => ({
+    id: mod.id,
+    ...(mod.min !== undefined || mod.max !== undefined
+      ? { value: { min: mod.min, max: mod.max } }
+      : {}),
+  }));
+}
+
 export class Poe2TradeClient {
   port = 7555;
   requestTimeout = 30_000;
@@ -117,26 +132,16 @@ export class Poe2TradeClient {
   async getItemByAttributes(searchParams: Poe2ItemSearch, league?: string) {
     const url = `${this.apiUrl}/search/poe2/${league || this.league}`;
     console.log("Requesting", url, "searchParams", searchParams);
+    const statFilters = buildTradeStatFilters(searchParams);
 
     const payload = {
       query: {
         name: searchParams.name,
         type: searchParams.baseType,
         status: { option: searchParams.status || "any" },
-        stats: [
-          {
-            type: "and",
-            filters: [
-              ...(searchParams?.explicit || []),
-              ...(searchParams?.implicit || []),
-            ].map((mod) => ({
-              id: mod.id,
-              ...(mod.min !== undefined || mod.max !== undefined
-                ? { value: { min: mod.min, max: mod.max } }
-                : {}),
-            })),
-          },
-        ],
+        ...(statFilters.length
+          ? { stats: [{ type: "and", filters: statFilters }] }
+          : {}),
         filters: {
           type_filters: {
             filters: {
@@ -195,17 +200,6 @@ export class Poe2TradeClient {
             },
           },
 
-          trade_filters: {
-            filters: {
-              price: {
-                min: searchParams.price || 1,
-                option:
-                  searchParams.currency === "exalted"
-                    ? undefined
-                    : searchParams.currency,
-              },
-            },
-          },
         },
       },
 

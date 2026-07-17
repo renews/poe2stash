@@ -5,6 +5,7 @@ import {
   normalizeModifierHash,
   Price,
   Poe2Item,
+  Poe2ItemSearch,
 } from "./types";
 import { Poe2Trade } from "./poe2trade";
 import { getCurrencyRateFromOverview } from "./Poe2TradeClient";
@@ -31,6 +32,7 @@ export type Estimate = {
     name?: string;
     rarity?: string;
     itemLevel?: number;
+    modifierComparisonVersion?: number;
     explicitCount: number;
     implicitCount?: number;
     explicitHashes?: string[];
@@ -40,9 +42,37 @@ export type Estimate = {
 
 export const DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES = 5;
 export const CURRENCY_RATE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+export const MODIFIER_COMPARISON_VERSION = 2;
 
 const CURRENCY_IDS = ["exalted", "chaos", "divine", "mirror"] as const;
 export type CurrencyRates = Record<string, number>;
+
+export type ParsedItemMod = {
+  mod: string;
+  parsed: string;
+  value1: number | undefined;
+  value2?: number;
+  hash: string;
+};
+
+type SearchModifier = {
+  id: string;
+  min?: number;
+  max?: number;
+};
+
+export type ModifierSearchFilters = {
+  explicit: SearchModifier[];
+  implicit: SearchModifier[];
+  pseudo: SearchModifier[];
+};
+
+const MODIFIER_RANGE_TOLERANCE = 0.07;
+const PSEUDO_MODIFIER_IDS = {
+  life: "pseudo.pseudo_total_life",
+  energyShield: "pseudo.pseudo_total_energy_shield",
+  resistance: "pseudo.pseudo_total_resistance",
+} as const;
 
 export function isEstimateFresh(
   estimate: Pick<Estimate, "checkedAt">,
@@ -89,6 +119,134 @@ export function roundCurrencyAmount(amount: number) {
   return Math.floor(amount + 0.5);
 }
 
+export function getModifierSearchRange(
+  value: number,
+  minimumOnly = false,
+): Omit<SearchModifier, "id"> {
+  if (minimumOnly) {
+    return { min: value };
+  }
+
+  const lower = value * (1 - MODIFIER_RANGE_TOLERANCE);
+  const upper = value * (1 + MODIFIER_RANGE_TOLERANCE);
+  return {
+    min: Math.floor(Math.min(lower, upper)),
+    max: Math.ceil(Math.max(lower, upper)),
+  };
+}
+
+function isMinimumOnlyModifier(modifier: ParsedItemMod) {
+  const text = `${modifier.mod} ${modifier.parsed}`.toLowerCase();
+  return (
+    text.includes("gem") ||
+    (text.includes("level of") && text.includes("skill"))
+  );
+}
+
+function getResistanceCount(text: string) {
+  if (text.includes("all resistances")) return 4;
+  if (text.includes("all elemental resistances")) return 3;
+
+  return ["fire", "cold", "lightning", "chaos"].filter((type) =>
+    text.includes(type),
+  ).length;
+}
+
+function getPseudoModifier(
+  modifier: ParsedItemMod,
+): { kind: keyof typeof PSEUDO_MODIFIER_IDS; value: number } | undefined {
+  if (modifier.value1 === undefined) return undefined;
+
+  const text = `${modifier.mod} ${modifier.parsed}`.toLowerCase();
+  const isConditional =
+    text.includes("increased") ||
+    text.includes("regenerat") ||
+    text.includes("recover") ||
+    text.includes("gain") ||
+    text.includes("per socket") ||
+    text.includes("while ");
+
+  if (text.includes("maximum life") && !isConditional) {
+    return { kind: "life", value: modifier.value1 };
+  }
+
+  if (text.includes("maximum energy shield") && !isConditional) {
+    return { kind: "energyShield", value: modifier.value1 };
+  }
+
+  const isResistance =
+    text.includes("resistance") &&
+    !text.includes("maximum") &&
+    !text.includes("penetrat") &&
+    !text.includes("damage") &&
+    !text.includes("enemy") &&
+    !text.includes("minion") &&
+    !text.includes("ally") &&
+    !text.includes("overcapped") &&
+    !text.includes("unaffected");
+  if (isResistance) {
+    const resistanceCount = getResistanceCount(text);
+    if (resistanceCount > 0) {
+      return {
+        kind: "resistance",
+        value: modifier.value1 * resistanceCount,
+      };
+    }
+  }
+
+  return undefined;
+}
+
+export function buildModifierSearchFilters(
+  explicit: ParsedItemMod[],
+  implicit: ParsedItemMod[] = [],
+): ModifierSearchFilters {
+  const filters: ModifierSearchFilters = {
+    explicit: [],
+    implicit: [],
+    pseudo: [],
+  };
+  const pseudoTotals = new Map<keyof typeof PSEUDO_MODIFIER_IDS, number>();
+
+  const addModifiers = (
+    modifiers: ParsedItemMod[],
+    target: SearchModifier[],
+  ) => {
+    for (const modifier of modifiers) {
+      const pseudo = getPseudoModifier(modifier);
+      if (pseudo) {
+        pseudoTotals.set(
+          pseudo.kind,
+          (pseudoTotals.get(pseudo.kind) || 0) + pseudo.value,
+        );
+        continue;
+      }
+
+      target.push({
+        id: modifier.hash,
+        ...(modifier.value1 !== undefined
+          ? getModifierSearchRange(
+              modifier.value1,
+              isMinimumOnlyModifier(modifier),
+            )
+          : {}),
+      });
+    }
+  };
+
+  addModifiers(explicit, filters.explicit);
+  addModifiers(implicit, filters.implicit);
+
+  for (const [kind, value] of pseudoTotals) {
+    filters.pseudo.push({
+      id: PSEUDO_MODIFIER_IDS[kind],
+      ...getModifierSearchRange(value),
+    });
+  }
+
+  return filters;
+}
+
 function getNumericItemProperty(item: Poe2Item, name: string) {
   const property = item.item?.properties?.find(
     (entry) => entry.name.toLowerCase() === name.toLowerCase(),
@@ -96,6 +254,43 @@ function getNumericItemProperty(item: Poe2Item, name: string) {
   const value = property?.values?.[0]?.[0];
   const numericValue = value?.match(/[-+]?\d+(?:\.\d+)?/)?.[0];
   return numericValue === undefined ? undefined : Number(numericValue);
+}
+
+const RARE_ITEM_CATEGORY_PATTERNS = [
+  { pattern: /amulet\b/, category: "accessory.amulet" },
+  { pattern: /ring\b/, category: "accessory.ring" },
+  { pattern: /belt\b/, category: "accessory.belt" },
+  { pattern: /quiver\b/, category: "armour.quiver" },
+  { pattern: /buckler\b/, category: "armour.buckler" },
+  { pattern: /focus\b/, category: "armour.focus" },
+  { pattern: /shield\b/, category: "armour.shield" },
+  {
+    pattern:
+      /regalia\b|body armour\b|cuirass\b|brigandine\b|chainmail\b|coat\b|garb\b|mail\b|plate\b|raiment\b|robe\b|vest\b/,
+    category: "armour.chest",
+  },
+  {
+    pattern:
+      /helmet\b|helm\b|pelt\b|hood\b|circlet\b|crown\b|burgonet\b|greathelm\b/,
+    category: "armour.helmet",
+  },
+  {
+    pattern: /gloves\b|gauntlets\b|mitts\b|wraps\b/,
+    category: "armour.gloves",
+  },
+  {
+    pattern: /boots\b|greaves\b|slippers\b|sabatons\b/,
+    category: "armour.boots",
+  },
+  { pattern: /jewel\b/, category: "jewel" },
+  { pattern: /flask\b/, category: "flask" },
+] as const;
+
+function getRareItemCategory(item: Poe2Item) {
+  const text = `${item.item?.typeLine || ""} ${item.item?.baseType || ""}`.toLowerCase();
+  return RARE_ITEM_CATEGORY_PATTERNS.find(({ pattern }) =>
+    pattern.test(text),
+  )?.category;
 }
 
 export function getItemSearchMetadata(item: Poe2Item) {
@@ -112,6 +307,8 @@ export function getItemSearchMetadata(item: Poe2Item) {
   const quality = item.item?.quality ?? getNumericItemProperty(item, "Quality");
   const isGem = isGemItem(item);
   const rarity = isGem ? undefined : rawRarity?.toLowerCase();
+  const category =
+    rarity === "rare" ? getRareItemCategory(item) : undefined;
 
   return {
     baseType,
@@ -120,6 +317,7 @@ export function getItemSearchMetadata(item: Poe2Item) {
         ? item.item?.name || item.item?.typeLine
         : undefined,
     rarity,
+    ...(category ? { category } : {}),
     ...(!isGem && item.item?.ilvl !== undefined
       ? { itemLevel: item.item.ilvl }
       : {}),
@@ -158,45 +356,69 @@ export function getItemSearchFilters(
 }
 
 class PriceEstimator {
-  async findMatchingItem(item: Poe2Item, league?: string) {
+  async getComparableSearchParams(
+    item: Poe2Item,
+    metadata: ReturnType<typeof getItemSearchMetadata>,
+    selectedExplicits: ParsedItemMod[],
+    selectedImplicits: ParsedItemMod[],
+    topN: number,
+    includeItemLevel: boolean,
+  ): Promise<Poe2ItemSearch> {
+    const { explicit, implicit } = selectedExplicits.length
+      ? await this.getSelectedSearchMods(
+          item,
+          selectedExplicits,
+          selectedImplicits,
+          topN,
+        )
+      : { explicit: [], implicit: selectedImplicits };
+
+    return {
+      status: "securable",
+      name: metadata.name,
+      rarity: metadata.rarity,
+      ...(metadata.rarity === "rare"
+        ? {}
+        : { baseType: metadata.baseType }),
+      ...(metadata.category ? { category: metadata.category } : {}),
+      ...getItemSearchFilters(metadata, includeItemLevel),
+      ...buildModifierSearchFilters(explicit, implicit),
+    };
+  }
+
+  async findMatchingItem(
+    item: Poe2Item,
+    league?: string,
+    modifierSelection?: ModifierSelection,
+  ) {
     const itemLeague = item.item?.league || league;
     const metadata = getItemSearchMetadata(item);
-    const { baseType, name, rarity } = metadata;
-    if (!baseType) {
+    const { baseType } = metadata;
+    if (!baseType && metadata.rarity !== "rare") {
       throw new Error("Item data is incomplete: base type is missing.");
     }
 
     const parsedMods = this.parseItemMods(item);
-    const topMods = await this.getHighTierMods(
-      item,
-      parsedMods.explicits?.length || 0,
+    const selectedExplicits = selectSelectedModifiers(
+      parsedMods.explicits || [],
+      modifierSelection?.explicit,
     );
-
-    const highTierStats = topMods
-      .map((s) => s.magnitudes)
-      .flat()
-      .map((mag) => mag.hash)
-      .map((hash) => parsedMods?.explicits?.find((p) => p.hash === hash))
-      .filter((p) => p);
-    const topStats = highTierStats.length
-      ? highTierStats
-      : (parsedMods.explicits || []).slice(
-          0,
-          parsedMods.explicits?.length || 0,
-        );
+    const selectedImplicits = selectSelectedModifiers(
+      parsedMods.implicits || [],
+      modifierSelection?.implicit,
+    );
+    const includeItemLevel =
+      !isGemItem(item) && modifierSelection?.itemLevel === true;
 
     const topMatch = await Poe2Trade.getItemByAttributes(
-      {
-        name,
-        rarity,
-        baseType,
-        ...getItemSearchFilters(metadata),
-        explicit: topStats.map((s) => ({
-          id: s!.hash,
-          ...Poe2Trade.range(s!.value1),
-        })),
-        status: "securable",
-      },
+      await this.getComparableSearchParams(
+        item,
+        metadata,
+        selectedExplicits,
+        selectedImplicits,
+        selectedExplicits.length,
+        includeItemLevel,
+      ),
       itemLeague,
     );
 
@@ -211,7 +433,7 @@ class PriceEstimator {
     const itemLeague = item.item?.league || league;
     const metadata = getItemSearchMetadata(item);
     const { baseType, name, rarity } = metadata;
-    if (!baseType) {
+    if (!baseType && metadata.rarity !== "rare") {
       throw new Error("Item data is incomplete: base type is missing.");
     }
 
@@ -237,29 +459,15 @@ class PriceEstimator {
       i >= 1 && allPrices.length < 10;
       i--
     ) {
-      const { explicit, implicit } = await this.getSelectedSearchMods(
-        item,
-        selectedExplicits,
-        selectedImplicits,
-        i,
-      );
-
       const topMatch = await Poe2Trade.getItemByAttributes(
-        {
-          status: "securable",
-          name,
-          rarity,
-          baseType,
-          ...getItemSearchFilters(metadata, includeItemLevel),
-          explicit: explicit.map((s) => ({
-            id: s!.hash,
-            ...Poe2Trade.range(s!.value1),
-          })),
-          implicit: implicit.map((s) => ({
-            id: s!.hash,
-            ...Poe2Trade.range(s!.value1),
-          })),
-        },
+        await this.getComparableSearchParams(
+          item,
+          metadata,
+          selectedExplicits,
+          selectedImplicits,
+          i,
+          includeItemLevel,
+        ),
         itemLeague,
       );
       //await wait(1000);
@@ -280,17 +488,14 @@ class PriceEstimator {
       // Items without explicit mods need a base-item lookup instead.
       console.log("fetching normal item", allPrices);
       const normal = await Poe2Trade.getItemByAttributes(
-        {
-          name,
-          rarity,
-          baseType,
-          ...getItemSearchFilters(metadata, includeItemLevel),
-          implicit: selectedImplicits.map((s) => ({
-            id: s!.hash,
-            ...Poe2Trade.range(s!.value1),
-          })),
-          status: "securable",
-        },
+        await this.getComparableSearchParams(
+          item,
+          metadata,
+          [],
+          selectedImplicits,
+          0,
+          includeItemLevel,
+        ),
         itemLeague,
       );
       //await wait(1000);
@@ -310,6 +515,7 @@ class PriceEstimator {
       itemLeague,
     );
     const estimate: Estimate = {
+      checkedAt: Date.now(),
       ...this.priceEstimate(allPrices),
       comparables: allPrices,
       search: {
@@ -320,6 +526,7 @@ class PriceEstimator {
         ...(includeItemLevel && metadata.itemLevel !== undefined
           ? { itemLevel: metadata.itemLevel }
           : {}),
+        modifierComparisonVersion: MODIFIER_COMPARISON_VERSION,
         explicitCount: selectedExplicits.length,
         implicitCount: selectedImplicits.length,
         explicitHashes: selectedExplicits.map((modifier) => modifier.hash),
@@ -351,6 +558,12 @@ class PriceEstimator {
     estimate: Estimate,
     modifierSelection?: ModifierSelection,
   ) {
+    if (
+      estimate.search?.modifierComparisonVersion !== MODIFIER_COMPARISON_VERSION
+    ) {
+      return false;
+    }
+
     const expectedItemLevel = estimate.search?.itemLevel;
     const selectedItemLevel =
       modifierSelection?.itemLevel === true && !isGemItem(item)
@@ -421,8 +634,8 @@ class PriceEstimator {
 
   async getSelectedSearchMods(
     item: Poe2Item,
-    selectedExplicits: ReturnType<PriceEstimator["parseItemMods"]>["explicits"],
-    selectedImplicits: ReturnType<PriceEstimator["parseItemMods"]>["implicits"],
+    selectedExplicits: ParsedItemMod[],
+    selectedImplicits: ParsedItemMod[],
     topN: number,
   ) {
     const topMods = await this.getHighTierMods(item, topN);
@@ -434,7 +647,10 @@ class PriceEstimator {
       .flat()
       .map((mag) => mag.hash)
       .map((hash) => selectedExplicits.find((p) => p.hash === hash))
-      .filter((p) => p && selectedHashes.has(p.hash));
+      .filter(
+        (p): p is NonNullable<typeof p> =>
+          p !== undefined && selectedHashes.has(p.hash),
+      );
 
     return {
       explicit: highTierStats.length
@@ -599,7 +815,7 @@ class PriceEstimator {
   cachePriceEstimate(itemId: string, estimate: Estimate) {
     const cacheKey = `price_estimates`;
     const data = Cache.getJson<Record<string, Estimate>>(cacheKey) || {};
-    data[itemId] = { ...estimate, checkedAt: Date.now() };
+    data[itemId] = { ...estimate, checkedAt: estimate.checkedAt || Date.now() };
     Cache.setJson(cacheKey, data, Cache.times.day);
   }
 

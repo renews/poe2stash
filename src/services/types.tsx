@@ -9,6 +9,7 @@ export type Poe2ItemSearch = Partial<{
 
   explicit?: Array<{ id: string; min?: number; max?: number }>;
   implicit?: Array<{ id: string; min?: number; max?: number }>;
+  pseudo?: Array<{ id: string; min?: number; max?: number }>;
 
   // equipment
   ar: number;
@@ -141,6 +142,21 @@ export function formatPriceAmount(amount: number): string {
           : 4;
 
   return amount.toFixed(decimals).replace(/\.?0+$/, "");
+}
+
+export function formatDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${month}.${day}.${year}`;
+}
+
+export function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${formatDate(timestamp)} ${hours}:${minutes}`;
 }
 
 export type ItemMod =

@@ -1,21 +1,30 @@
+import axios from "axios";
 import { expect, test } from "bun:test";
 import {
   getComparablePriceCurrency,
+  buildModifierSearchFilters,
   getItemSearchFilters,
   getItemSearchMetadata,
   getExchangeRateCacheKey,
   isEstimateFresh,
   Estimate,
+  MODIFIER_COMPARISON_VERSION,
   PriceChecker,
   roundCurrencyAmount,
   selectSelectedModifiers,
 } from "../src/services/PriceEstimator";
 import {
+  buildTradeStatFilters,
   getCurrencyRateFromOverview,
   parseMirrorRateFromPage,
+  Poe2TradeClient,
 } from "../src/services/Poe2TradeClient";
 import { Poe2Item } from "../src/services/types";
-import { formatPriceAmount } from "../src/services/types";
+import {
+  formatDate,
+  formatDateTime,
+  formatPriceAmount,
+} from "../src/services/types";
 import { Poe2Trade } from "../src/services/poe2trade";
 
 test("reports when no comparable listings are available", () => {
@@ -132,14 +141,236 @@ test("includes item level for non-gems but not gems", () => {
   });
 });
 
+test("uses pseudo totals and a seven percent range for comparable modifiers", () => {
+  const filters = buildModifierSearchFilters(
+    [
+      { hash: "explicit.life", parsed: "100 to maximum Life", value1: 100 },
+      {
+        hash: "explicit.energy-shield",
+        parsed: "200 to maximum Energy Shield",
+        value1: 200,
+      },
+      {
+        hash: "explicit.fire-resistance",
+        parsed: "25% to Fire Resistance",
+        value1: 25,
+      },
+      {
+        hash: "explicit.skill-level",
+        parsed: "+2 to Level of all Fire Skills",
+        value1: 2,
+      },
+      {
+        hash: "explicit.skill-gem-requirements",
+        parsed:
+          "Equipment and Skill Gems have 20% increased Attribute Requirements",
+        value1: 20,
+      },
+      {
+        hash: "explicit.attack-speed",
+        parsed: "50% increased Attack Speed",
+        value1: 50,
+      },
+    ],
+    [
+      {
+        hash: "implicit.cold-resistance",
+        parsed: "15% to Cold Resistance",
+        value1: 15,
+      },
+    ],
+  );
+
+  expect(filters.pseudo).toEqual([
+    { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
+    { id: "pseudo.pseudo_total_energy_shield", min: 186, max: 214 },
+    { id: "pseudo.pseudo_total_resistance", min: 37, max: 43 },
+  ]);
+  expect(filters.explicit).toEqual([
+    { id: "explicit.skill-level", min: 2 },
+    { id: "explicit.skill-gem-requirements", min: 20 },
+    { id: "explicit.attack-speed", min: 46, max: 54 },
+  ]);
+});
+
+test("serializes pseudo filters into the trade stat group", () => {
+  expect(
+    buildTradeStatFilters({
+      explicit: [{ id: "explicit.stat_123", min: 10, max: 20 }],
+      pseudo: [{ id: "pseudo.pseudo_total_resistance", min: 25, max: 27 }],
+    }),
+  ).toEqual([
+    { id: "explicit.stat_123", value: { min: 10, max: 20 } },
+    {
+      id: "pseudo.pseudo_total_resistance",
+      value: { min: 25, max: 27 },
+    },
+  ]);
+});
+
 test("keeps fractional prices visible", () => {
   expect(formatPriceAmount(0.109)).toBe("0.109");
+});
+
+test("formats dates for price and currency freshness labels", () => {
+  expect(formatDate(new Date(2026, 6, 17).getTime())).toBe("07.17.2026");
+  expect(formatDateTime(new Date(2026, 6, 17, 9, 5).getTime())).toBe(
+    "07.17.2026 09:05",
+  );
 });
 
 test("separates cached exchange rates by league", () => {
   expect(getExchangeRateCacheKey("exalted", "chaos", "Standard")).not.toBe(
     getExchangeRateCacheKey("exalted", "chaos", "HC Runes of Aldur"),
   );
+});
+
+test("uses pseudo and ranged filters for the Search lookup", async () => {
+  const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
+  let capturedSearch: Parameters<typeof Poe2Trade.getItemByAttributes>[0];
+
+  Poe2Trade.getItemByAttributes = async (searchParams) => {
+    capturedSearch = searchParams;
+    return { id: "query-id", complexity: 0, result: [], total: 0 };
+  };
+
+  try {
+    await PriceChecker.findMatchingItem(
+      {
+        item: {
+          baseType: "Fine Ring",
+          explicitMods: [
+            "100 to maximum Life",
+            "25% to Fire Resistance",
+            "50% increased Attack Speed",
+          ],
+          implicitMods: [],
+        },
+      } as Poe2Item,
+      "Standard",
+    );
+
+    expect(capturedSearch.pseudo).toEqual([
+      { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
+      { id: "pseudo.pseudo_total_resistance", min: 23, max: 27 },
+    ]);
+    expect(capturedSearch.explicit).toEqual([
+      { id: "explicit.stat_681332047", min: 46, max: 54 },
+    ]);
+  } finally {
+    Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
+test("uses the same selected modifiers for the Search lookup", async () => {
+  const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
+  let capturedSearch: Parameters<typeof Poe2Trade.getItemByAttributes>[0];
+
+  Poe2Trade.getItemByAttributes = async (searchParams) => {
+    capturedSearch = searchParams;
+    return { id: "query-id", complexity: 0, result: [], total: 0 };
+  };
+
+  try {
+    await PriceChecker.findMatchingItem(
+      {
+        item: {
+          baseType: "Fine Ring",
+          explicitMods: [
+            "100 to maximum Life",
+            "25% to Fire Resistance",
+            "50% increased Attack Speed",
+          ],
+          implicitMods: [],
+        },
+      } as Poe2Item,
+      "Standard",
+      { explicit: [true, false, true], implicit: [], itemLevel: false },
+    );
+
+    expect(capturedSearch.pseudo).toEqual([
+      { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
+    ]);
+    expect(capturedSearch.explicit).toEqual([
+      { id: "explicit.stat_681332047", min: 46, max: 54 },
+    ]);
+  } finally {
+    Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
+test("does not use a base type for rare item searches", async () => {
+  const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
+  let capturedSearch: Parameters<typeof Poe2Trade.getItemByAttributes>[0];
+
+  Poe2Trade.getItemByAttributes = async (searchParams) => {
+    capturedSearch = searchParams;
+    return { id: "query-id", complexity: 0, result: [], total: 0 };
+  };
+
+  try {
+    await PriceChecker.findMatchingItem(
+      {
+        item: {
+          rarity: "Rare",
+          typeLine: "Lapis Amulet",
+          baseType: "Lapis Amulet",
+          explicitMods: ["100 to maximum Life"],
+          implicitMods: [],
+        },
+      } as Poe2Item,
+      "Standard",
+    );
+
+    expect(capturedSearch.rarity).toBe("rare");
+    expect(capturedSearch.category).toBe("accessory.amulet");
+    expect(capturedSearch).not.toHaveProperty("baseType");
+  } finally {
+    Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
+test("maps rare body armour to the body armour category", () => {
+  expect(
+    getItemSearchMetadata({
+      item: {
+        rarity: "Rare",
+        typeLine: "Vaal Regalia",
+        baseType: "Vaal Regalia",
+      },
+    } as Poe2Item).category,
+  ).toBe("armour.chest");
+});
+
+test("omits buyout trade filters from comparable item searches", async () => {
+  const client = new Poe2TradeClient();
+  const originalPost = axios.post;
+  let capturedPayload: unknown;
+
+  axios.post = (async (...args: Parameters<typeof axios.post>) => {
+    capturedPayload = args[1];
+    return {
+      data: { id: "query-id", complexity: 0, result: [], total: 0 },
+    };
+  }) as unknown as typeof axios.post;
+
+  try {
+    await client.getItemByAttributes(
+      { baseType: "Fine Ring", price: 1, currency: "exalted" },
+      "Standard",
+    );
+  } finally {
+    axios.post = originalPost;
+  }
+
+  const query = capturedPayload as {
+    query: {
+      filters: Record<string, unknown>;
+      stats?: unknown;
+    };
+  };
+  expect(query.query.filters).not.toHaveProperty("trade_filters");
+  expect(query.query).not.toHaveProperty("stats");
 });
 
 test("keeps one-currency comparisons in their listed currency", () => {
@@ -339,7 +570,11 @@ test("detects when a modifier selection no longer matches its estimate", () => {
     },
   } as Poe2Item;
   const estimate = {
-    search: { explicitHashes: ["explicit.stat_123"], implicitHashes: [] },
+    search: {
+      explicitHashes: ["explicit.stat_123"],
+      implicitHashes: [],
+      modifierComparisonVersion: MODIFIER_COMPARISON_VERSION,
+    },
   } as Estimate;
 
   expect(
@@ -369,6 +604,7 @@ test("matches cached estimates with the selected item-level filter", () => {
       explicitHashes: [],
       implicitHashes: [],
       itemLevel: 84,
+      modifierComparisonVersion: MODIFIER_COMPARISON_VERSION,
     },
   } as Estimate;
 
@@ -391,7 +627,11 @@ test("matches cached estimates with the selected item-level filter", () => {
     PriceChecker.matchesModifierSelection(
       item,
       {
-        search: { explicitHashes: [], implicitHashes: [] },
+        search: {
+          explicitHashes: [],
+          implicitHashes: [],
+          modifierComparisonVersion: MODIFIER_COMPARISON_VERSION,
+        },
       } as Estimate,
       { explicit: [], implicit: [] },
     ),
