@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { WebsocketClient } from "../services/WebsocketClient";
 import { chatService } from "../services/ChatService";
 import { PoeListItem } from "./PoeListItem";
@@ -35,7 +41,30 @@ const MessagesPage: React.FC = () => {
 
   const wsRef = useRef<WebsocketClient | null>(null);
 
-  const setupWebSocket = () => {
+  const fetchOffers = useCallback(async () => {
+    try {
+      const fetchedOffers = await chatService.getOffers();
+      setOffers(fetchedOffers);
+    } catch (error) {
+      setErrorMessage("Error fetching offers: " + (error as Error).message);
+      console.error("Error fetching offers:", error);
+    }
+  }, [setErrorMessage]);
+
+  const fetchAccountItems = useCallback(async () => {
+    const accountName = localStorage.getItem("accountName");
+    const cachedAccountItems = accountName
+      ? await Poe2Trade.getAllCachedAccountItems(accountName, selectedLeague)
+      : [];
+    if (cachedAccountItems.length === 0) {
+      setErrorMessage(
+        "No account items found. Please check your account name in the settings.",
+      );
+    }
+    setAccountItems(cachedAccountItems);
+  }, [selectedLeague, setErrorMessage]);
+
+  const setupWebSocket = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.close();
     }
@@ -45,12 +74,12 @@ const MessagesPage: React.FC = () => {
       console.log("Chat file changed:", event);
 
       if (event) {
-        fetchOffers();
-        fetchAccountItems();
+        void fetchOffers();
+        void fetchAccountItems();
       }
     };
     wsRef.current = ws;
-  };
+  }, [fetchAccountItems, fetchOffers]);
 
   useEffect(() => {
     const initialize = async () => {
@@ -79,7 +108,7 @@ const MessagesPage: React.FC = () => {
         wsRef.current?.close();
       }
     };
-  }, []); // Empty dependency array to run only on mount and unmount
+  }, [fetchAccountItems, fetchOffers, setErrorMessage, setupWebSocket]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,29 +124,6 @@ const MessagesPage: React.FC = () => {
       console.error("Error:", error);
       setErrorMessage("Error setting chat file: " + (error as Error).message);
     }
-  };
-
-  const fetchOffers = async () => {
-    try {
-      const fetchedOffers = await chatService.getOffers();
-      setOffers(fetchedOffers);
-    } catch (error) {
-      setErrorMessage("Error fetching offers: " + (error as Error).message);
-      console.error("Error fetching offers:", error);
-    }
-  };
-
-  const fetchAccountItems = async () => {
-    const accountName = localStorage.getItem("accountName");
-    const accountItems = accountName
-      ? await Poe2Trade.getAllCachedAccountItems(accountName)
-      : [];
-    if (accountItems.length === 0) {
-      setErrorMessage(
-        "No account items found. Please check your account name in the settings.",
-      );
-    }
-    setAccountItems(accountItems);
   };
 
   const findItem = (offer: ChatOffer) => {

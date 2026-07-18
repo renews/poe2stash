@@ -6,6 +6,7 @@ export class RefreshAllItems extends Job<Poe2Item[]> {
   constructor(
     private accountName: string,
     private filteredItems: Poe2Item[],
+    private league: string,
   ) {
     super("refresh-items", "Refreshing Items", "Refeshing items listed...");
   }
@@ -17,10 +18,13 @@ export class RefreshAllItems extends Job<Poe2Item[]> {
         this.accountName,
         batch.map((item) => item.id),
         true,
+        this.league,
+        { signal: this.signal },
       );
 
       const accountItems = await Poe2Trade.getAllCachedAccountItems(
         this.accountName,
+        this.league,
       );
 
       yield {

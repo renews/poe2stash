@@ -8,6 +8,11 @@ import {
   formFieldClassName,
   successButtonClassName,
 } from "./formStyles";
+import {
+  getPublicListingStashCounts,
+  getPublicListingStashLabel,
+  PUBLIC_LISTING_SCOPE_NOTICE,
+} from "../services/stashScope";
 
 const MainPage: React.FC = () => {
   const {
@@ -40,6 +45,7 @@ const MainPage: React.FC = () => {
     priceCheckAllItems,
     filteredItems,
   } = useAppContext();
+  const stashCounts = getPublicListingStashCounts(items);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -49,10 +55,15 @@ const MainPage: React.FC = () => {
     <div className="w-full p-4 pt-16">
       <h1 className="text-2xl font-bold mb-4 mt-8">Welcome to Poe2Stash</h1>
 
+      <div className="mb-4 rounded-md border border-blue-700 bg-blue-950/40 p-3 text-sm text-blue-100">
+        <p className="font-semibold">Public listing sync</p>
+        <p className="mt-1 text-blue-200">{PUBLIC_LISTING_SCOPE_NOTICE}</p>
+      </div>
+
       {items.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-4">
           <label htmlFor="stash-select" className="mr-2">
-            Filter by Stash Tab:
+            Public listing stash tab:
           </label>
           <select
             className={`${formFieldClassName} min-w-48`}
@@ -62,7 +73,7 @@ const MainPage: React.FC = () => {
           >
             {stashTabs.map((stash) => (
               <option key={stash} value={stash} className="bg-gray-600">
-                {stash}
+                {getPublicListingStashLabel(stash, stashCounts)}
               </option>
             ))}
           </select>

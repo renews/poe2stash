@@ -4,14 +4,14 @@ import { Jobs } from "../services/JobQueue";
 import { wait } from "../utils/wait";
 
 interface JobQueueProps {
-  jobs: Job<any>[];
-  setJobs: (jobs: Job<any>[]) => void;
+  jobs: Job<unknown>[];
+  setJobs: (jobs: Job<unknown>[]) => void;
   setErrorMessage: (message: string) => void;
 }
 
 export async function handleJob<T>(
   job: Job<T>,
-  setJobs: (jobs: Job<T>[]) => void,
+  setJobs: (jobs: Job<unknown>[]) => void,
   setErrorMessage: (message: string) => void,
 ) {
   try {
@@ -34,14 +34,19 @@ export async function handleJob<T>(
     const task = Jobs.start(job);
     setJobs(Jobs.getRunningJobs());
     await task;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error price checking items:", error);
     if (job.status === "cancelled") {
       setErrorMessage("");
       return;
     }
 
-    if (typeof error === "object" && "message" in error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof error.message === "string"
+    ) {
       setErrorMessage(error.message);
     } else {
       setErrorMessage(job.name + " failed. Sorry about that");

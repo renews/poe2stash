@@ -7,6 +7,7 @@ export interface Progress<T> {
 export type JobStatus = "idle" | "running" | "done" | "failed" | "cancelled";
 
 export abstract class Job<T> {
+  private requestAbortController = new AbortController();
   result: Promise<T> | null = null;
   cancelling = false;
   currentProgress: Progress<T> | null = null;
@@ -21,9 +22,14 @@ export abstract class Job<T> {
 
   abstract _task(): AsyncGenerator<Progress<T>>;
 
+  protected get signal() {
+    return this.requestAbortController.signal;
+  }
+
   cancel() {
     this.status = "cancelled";
     this.cancelling = true;
+    this.requestAbortController.abort();
     void this.onCancel().catch((error) =>
       console.error("Job cancellation handler failed", error),
     );
@@ -38,6 +44,7 @@ export abstract class Job<T> {
     console.log("Starting job", this.id);
     this.status = "running";
     this.cancelling = false;
+    this.requestAbortController = new AbortController();
 
     try {
       const task = this._task();

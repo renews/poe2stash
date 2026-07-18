@@ -21,6 +21,7 @@ import { ModifierSelection, Poe2Item } from "../services/types";
 import { SyncAccount } from "../jobs/SyncAccount";
 import { RefreshAllItems } from "../jobs/RefreshAllItems";
 import {
+  getApiRequestProgressLabel,
   getPriceCheckProgressLabel,
   PriceCheckAllItems,
 } from "../jobs/PriceCheckAllItems";
@@ -144,8 +145,8 @@ interface AppContextType {
   setModifierSelection: (itemId: string, selection: ModifierSelection) => void;
   errorMessage: string | null;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
-  jobs: Job<any>[];
-  setJobs: Dispatch<SetStateAction<Job<any>[]>>;
+  jobs: Job<unknown>[];
+  setJobs: Dispatch<SetStateAction<Job<unknown>[]>>;
   getItems: (name: string) => Promise<void>;
   filterByStash: (stash: string) => void;
   priceCheckItem: (
@@ -228,7 +229,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     Record<string, ModifierSelection>
   >(loadModifierSelections);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<Job<any>[]>([]);
+  const [jobs, setJobs] = useState<Job<unknown>[]>([]);
   const [currencyRates, setCurrencyRates] = useState<CurrencyRates>({});
   const [currencyRatesUpdatedAt, setCurrencyRatesUpdatedAt] = useState<
     number | null
@@ -257,6 +258,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const priceCheckItems = async (itemsToCheck: Poe2Item[]) => {
+    let currentItemProgress = "";
     setIsPriceChecking(true);
     setPriceCheckProgress(
       itemsToCheck.length
@@ -283,7 +285,17 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     priceCheck.onItemStart = ({ current, total, item }) => {
-      setPriceCheckProgress(getPriceCheckProgressLabel(current, total, item));
+      currentItemProgress = getPriceCheckProgressLabel(current, total, item);
+      setPriceCheckProgress(currentItemProgress);
+    };
+
+    priceCheck.onRequestState = (state) => {
+      const requestProgress = getApiRequestProgressLabel(state);
+      setPriceCheckProgress(
+        requestProgress
+          ? `${currentItemProgress} · ${requestProgress}`
+          : currentItemProgress,
+      );
     };
 
     try {
@@ -303,7 +315,12 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
 
     sync.onStep = async (progress) => {
       console.log("Sync step", progress);
-      const items = await Poe2Trade.fetchAllItems(name, progress.data);
+      const items = await Poe2Trade.fetchAllItems(
+        name,
+        progress.data,
+        false,
+        selectedLeague,
+      );
       setItems(items);
       updateStashTabs(items);
     };
@@ -311,7 +328,10 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await handleJob(sync, setJobs, setErrorMessage);
 
-      const accountItems = await Poe2Trade.getAllCachedAccountItems(name);
+      const accountItems = await Poe2Trade.getAllCachedAccountItems(
+        name,
+        selectedLeague,
+      );
       setItems(accountItems);
       updateStashTabs(accountItems);
       if (accountItems.length) {
@@ -351,13 +371,25 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const refreshItem = async (item: Poe2Item) => {
-    await Poe2Trade.fetchAllItems(accountName, [item.id], true);
-    const accountItems = await Poe2Trade.getAllCachedAccountItems(accountName);
+    await Poe2Trade.fetchAllItems(
+      accountName,
+      [item.id],
+      true,
+      selectedLeague,
+    );
+    const accountItems = await Poe2Trade.getAllCachedAccountItems(
+      accountName,
+      selectedLeague,
+    );
     setItems(accountItems);
   };
 
   const refreshAllItems = async () => {
-    const refresh = new RefreshAllItems(accountName, filteredItems);
+    const refresh = new RefreshAllItems(
+      accountName,
+      filteredItems,
+      selectedLeague,
+    );
 
     refresh.onStep = async (progress) => {
       setItems(progress.data);
@@ -387,7 +419,10 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const getCachedItems = async (name: string) => {
-      const accountItems = await Poe2Trade.getAllCachedAccountItems(name);
+      const accountItems = await Poe2Trade.getAllCachedAccountItems(
+        name,
+        selectedLeague,
+      );
       setItems(accountItems);
     };
 
@@ -396,7 +431,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     if (accountName) {
       getCachedItems(accountName);
     }
-  }, [accountName]);
+  }, [accountName, selectedLeague]);
 
   useEffect(() => {
     void refreshCurrencyRates();

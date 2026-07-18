@@ -7,6 +7,7 @@ import {
   PriceChecker,
 } from "../services/PriceEstimator";
 import { ModifierSelection, Poe2Item } from "../services/types";
+import { ApiRequestState } from "../services/ApiRequestQueue";
 
 export type PriceCheckItemProgress = {
   current: number;
@@ -31,9 +32,21 @@ export function getPriceCheckProgressLabel(
   return `Checking item ${current} of ${total}: ${getPriceCheckItemName(item)}`;
 }
 
+export function getApiRequestProgressLabel(state: ApiRequestState) {
+  const delaySeconds = Math.ceil((state.delayMs || 0) / 1000);
+  if (state.status === "retrying") {
+    return `Rate limited; retrying in ${delaySeconds}s`;
+  }
+  if (state.status === "waiting") {
+    return `Waiting ${delaySeconds}s for the API rate limit`;
+  }
+  return null;
+}
+
 export class PriceCheckAllItems extends Job<Estimate> {
   onItemStart: (progress: PriceCheckItemProgress) => Promise<void> | void =
     async () => {};
+  onRequestState: (state: ApiRequestState) => void = () => {};
 
   constructor(
     private filteredItems: Poe2Item[],
@@ -86,6 +99,10 @@ export class PriceCheckAllItems extends Job<Estimate> {
             this.league,
             modifierSelection,
             this.modifierRangePercent,
+            {
+              signal: this.signal,
+              onState: (state) => this.onRequestState(state),
+            },
           );
           yield {
             total: this.filteredItems.length,

@@ -1,12 +1,11 @@
 import { Job } from "../jobs/Job";
 
 export class JobQueue {
-  private runningJobs: Map<string, Job<any>> = new Map();
+  private runningJobs: Map<string, Job<unknown>> = new Map();
 
   async start<T>(job: Job<T>) {
     if (this.runningJobs.has(job.id)) {
       throw new Error(`Job with id ${job.id} is already running`);
-      return;
     }
 
     this.runningJobs.set(job.id, job);
@@ -29,7 +28,7 @@ export class JobQueue {
     }
   }
 
-  getRunningJobs(): Job<any>[] {
+  getRunningJobs(): Job<unknown>[] {
     return Array.from(this.runningJobs.values());
   }
 }

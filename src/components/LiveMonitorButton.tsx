@@ -58,13 +58,14 @@ export const LiveMonitorButton: React.FC<LiveMonitorButtonProps> = ({
             // try to fetch in batches after 5 seconds of events, incase many items come in at once
             if (newItemsBatch.length > 0) {
               const toFetch = Poe2Trade.toUniqueItems([...newItemsBatch]);
-              Poe2Trade.upsertCachedAccountItems(accountName, toFetch);
+              Poe2Trade.upsertCachedAccountItems(accountName, toFetch, league);
 
               newItemsBatch = [];
               const newItems = await Poe2Trade.fetchAllItems(
                 accountName,
                 toFetch,
                 true,
+                league,
               );
 
               if (newItems.length > 0) {
