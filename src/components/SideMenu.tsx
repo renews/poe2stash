@@ -8,11 +8,19 @@ import {
   History as HistoryIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import packageJson from "../../package.json";
 
 interface SideMenuProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+export const SideMenuFooter: React.FC = () => (
+  <div className="p-4 bg-gray-700 text-gray-400 text-sm">
+    <div>© 2023 Poe2Stash</div>
+    <div>Version {packageJson.version}</div>
+  </div>
+);
 
 export const SideMenu: React.FC<SideMenuProps> = ({ isOpen, onClose }) => {
   const handleLinkClick = () => {
@@ -76,9 +84,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ isOpen, onClose }) => {
           <span>Configuration</span>
         </Link>
       </nav>
-      <div className="p-4 bg-gray-700 text-gray-400 text-sm">
-        © 2023 Poe2Stash
-      </div>
+      <SideMenuFooter />
     </div>
   );
 };
