@@ -24,6 +24,11 @@ import {
 import {
   createMerchantHistoryUrl,
 } from "../services/externalLinks";
+import { loadPriceSnapshots } from "../services/priceHistory";
+import {
+  matchSalesToPriceSnapshots,
+  summarizeSaleCalibration,
+} from "../services/saleCalibration";
 import {
   formFieldClassName,
   primaryButtonClassName,
@@ -288,6 +293,23 @@ const SaleHistoryPage: React.FC = () => {
     () => filterMerchantHistory(entries, searchTerm),
     [entries, searchTerm],
   );
+  const priceSnapshots = useMemo(() => loadPriceSnapshots(), []);
+  const calibrationMatches = useMemo(
+    () =>
+      matchSalesToPriceSnapshots(entries, priceSnapshots, selectedLeague),
+    [entries, priceSnapshots, selectedLeague],
+  );
+  const calibrationBySaleId = useMemo(
+    () =>
+      new Map(
+        calibrationMatches.map((match) => [match.sale.id, match] as const),
+      ),
+    [calibrationMatches],
+  );
+  const calibration = useMemo(
+    () => summarizeSaleCalibration(calibrationMatches),
+    [calibrationMatches],
+  );
 
   return (
     <div className="w-full p-4 pt-16">
@@ -345,6 +367,43 @@ const SaleHistoryPage: React.FC = () => {
         )}
       </div>
 
+      <div className="mb-4 rounded-lg bg-gray-800 p-4 shadow-lg">
+        <p className="font-semibold text-gray-100">Pricing calibration</p>
+        {calibration.matchedSales > 0 ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-md bg-gray-700 p-3">
+              <p className="text-xs text-gray-400">Matched sales</p>
+              <p className="text-lg font-semibold text-blue-200">
+                {calibration.matchedSales}
+              </p>
+            </div>
+            <div className="rounded-md bg-gray-700 p-3">
+              <p className="text-xs text-gray-400">Median price error</p>
+              <p className="text-lg font-semibold text-orange-200">
+                {calibration.medianAbsoluteErrorPercent.toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-md bg-gray-700 p-3">
+              <p className="text-xs text-gray-400">Under / over</p>
+              <p className="text-lg font-semibold text-purple-200">
+                {calibration.underpriced} / {calibration.overpriced}
+              </p>
+            </div>
+            <div className="rounded-md bg-gray-700 p-3">
+              <p className="text-xs text-gray-400">Median time to sell</p>
+              <p className="text-lg font-semibold text-green-200">
+                {calibration.medianHoursToSell.toFixed(1)}h
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-gray-400">
+            Future sales will be matched with saved price checks to measure
+            suggestion accuracy and time to sell.
+          </p>
+        )}
+      </div>
+
       <input
         type="search"
         value={searchTerm}
@@ -371,12 +430,15 @@ const SaleHistoryPage: React.FC = () => {
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Item</th>
                 <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Suggested</th>
                 <th className="px-4 py-3">Buyer</th>
                 <th className="px-4 py-3">Note</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {filteredEntries.map((entry) => (
+              {filteredEntries.map((entry) => {
+                const calibrationMatch = calibrationBySaleId.get(entry.id);
+                return (
                 <tr key={entry.id} className="hover:bg-gray-750">
                   <td className="whitespace-nowrap px-4 py-3 text-gray-300">
                     {formatHistoryDate(entry.timestamp)}
@@ -387,6 +449,11 @@ const SaleHistoryPage: React.FC = () => {
                   <td className="whitespace-nowrap px-4 py-3 text-yellow-300">
                     {entry.amount ?? "—"} {entry.currency}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-orange-200">
+                    {calibrationMatch
+                      ? `${calibrationMatch.suggestedAmount} ${calibrationMatch.currency} (${calibrationMatch.percentError >= 0 ? "+" : ""}${calibrationMatch.percentError.toFixed(1)}%)`
+                      : "—"}
+                  </td>
                   <td className="px-4 py-3 text-gray-300">
                     {entry.buyer || "—"}
                   </td>
@@ -394,7 +461,8 @@ const SaleHistoryPage: React.FC = () => {
                     {entry.note || "—"}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
