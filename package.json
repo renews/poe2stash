@@ -1,7 +1,7 @@
 {
   "name": "poe2stash",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.7",
   "type": "module",
   "trustedDependencies": [
     "electron"
@@ -9,9 +9,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "check": "bun run typecheck && bun run lint && bun test",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "postinstall": "bun node_modules/electron/install.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.0",

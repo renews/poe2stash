@@ -15,4 +15,16 @@ module.exports = {
       { allowConstantExport: true },
     ],
   },
+  overrides: [
+    {
+      files: [
+        'src/services/**/*.{ts,tsx}',
+        'src/contexts/**/*.{ts,tsx}',
+        'src/components/JobQueue.tsx',
+      ],
+      rules: {
+        'react-refresh/only-export-components': 'off',
+      },
+    },
+  ],
 }
