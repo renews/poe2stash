@@ -37,12 +37,16 @@ export type Estimate = {
     implicitCount?: number;
     explicitHashes?: string[];
     implicitHashes?: string[];
+    modifierRangePercent?: number;
   };
 };
 
 export const DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES = 5;
+export const MIN_MODIFIER_RANGE_PERCENT = 5;
+export const MAX_MODIFIER_RANGE_PERCENT = 100;
+export const DEFAULT_MODIFIER_RANGE_PERCENT = 12;
 export const CURRENCY_RATE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-export const MODIFIER_COMPARISON_VERSION = 2;
+export const MODIFIER_COMPARISON_VERSION = 3;
 
 const CURRENCY_IDS = ["exalted", "chaos", "divine", "mirror"] as const;
 export type CurrencyRates = Record<string, number>;
@@ -67,7 +71,6 @@ export type ModifierSearchFilters = {
   pseudo: SearchModifier[];
 };
 
-const MODIFIER_RANGE_TOLERANCE = 0.07;
 const PSEUDO_MODIFIER_IDS = {
   life: "pseudo.pseudo_total_life",
   energyShield: "pseudo.pseudo_total_energy_shield",
@@ -119,19 +122,32 @@ export function roundCurrencyAmount(amount: number) {
   return Math.floor(amount + 0.5);
 }
 
+export function normalizeModifierRangePercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_MODIFIER_RANGE_PERCENT;
+  }
+
+  return Math.min(
+    MAX_MODIFIER_RANGE_PERCENT,
+    Math.max(MIN_MODIFIER_RANGE_PERCENT, Math.round(value)),
+  );
+}
+
 export function getModifierSearchRange(
   value: number,
   minimumOnly = false,
+  modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
 ): Omit<SearchModifier, "id"> {
   if (minimumOnly) {
     return { min: value };
   }
 
-  const lower = value * (1 - MODIFIER_RANGE_TOLERANCE);
-  const upper = value * (1 + MODIFIER_RANGE_TOLERANCE);
+  const tolerance = normalizeModifierRangePercent(modifierRangePercent) / 100;
+  const lower = value * (1 - tolerance);
+  const upper = value * (1 + tolerance);
   return {
-    min: Math.floor(Math.min(lower, upper)),
-    max: Math.ceil(Math.max(lower, upper)),
+    min: Math.floor(Number(Math.min(lower, upper).toFixed(10))),
+    max: Math.ceil(Number(Math.max(lower, upper).toFixed(10))),
   };
 }
 
@@ -200,6 +216,7 @@ function getPseudoModifier(
 export function buildModifierSearchFilters(
   explicit: ParsedItemMod[],
   implicit: ParsedItemMod[] = [],
+  modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
 ): ModifierSearchFilters {
   const filters: ModifierSearchFilters = {
     explicit: [],
@@ -228,6 +245,7 @@ export function buildModifierSearchFilters(
           ? getModifierSearchRange(
               modifier.value1,
               isMinimumOnlyModifier(modifier),
+              modifierRangePercent,
             )
           : {}),
       });
@@ -240,7 +258,7 @@ export function buildModifierSearchFilters(
   for (const [kind, value] of pseudoTotals) {
     filters.pseudo.push({
       id: PSEUDO_MODIFIER_IDS[kind],
-      ...getModifierSearchRange(value),
+      ...getModifierSearchRange(value, false, modifierRangePercent),
     });
   }
 
@@ -363,7 +381,9 @@ class PriceEstimator {
     selectedImplicits: ParsedItemMod[],
     topN: number,
     includeItemLevel: boolean,
+    modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
   ): Promise<Poe2ItemSearch> {
+    const gem = isGemItem(item);
     const { explicit, implicit } = selectedExplicits.length
       ? await this.getSelectedSearchMods(
           item,
@@ -375,14 +395,18 @@ class PriceEstimator {
 
     return {
       status: "securable",
-      name: metadata.name,
+      ...(!gem && metadata.name ? { name: metadata.name } : {}),
       rarity: metadata.rarity,
       ...(metadata.rarity === "rare"
         ? {}
         : { baseType: metadata.baseType }),
       ...(metadata.category ? { category: metadata.category } : {}),
       ...getItemSearchFilters(metadata, includeItemLevel),
-      ...buildModifierSearchFilters(explicit, implicit),
+      ...buildModifierSearchFilters(
+        explicit,
+        implicit,
+        modifierRangePercent,
+      ),
     };
   }
 
@@ -390,6 +414,7 @@ class PriceEstimator {
     item: Poe2Item,
     league?: string,
     modifierSelection?: ModifierSelection,
+    modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
   ) {
     const itemLeague = item.item?.league || league;
     const metadata = getItemSearchMetadata(item);
@@ -418,6 +443,7 @@ class PriceEstimator {
         selectedImplicits,
         selectedExplicits.length,
         includeItemLevel,
+        modifierRangePercent,
       ),
       itemLeague,
     );
@@ -429,6 +455,7 @@ class PriceEstimator {
     item: Poe2Item,
     league?: string,
     modifierSelection?: ModifierSelection,
+    modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
   ) {
     const itemLeague = item.item?.league || league;
     const metadata = getItemSearchMetadata(item);
@@ -453,61 +480,19 @@ class PriceEstimator {
     const allPrices: ComparablePrice[] = [];
     const currency = "exalted";
 
-    // loop until we have 10 prices or we have no more mods to search
-    for (
-      let i = selectedExplicits.length;
-      i >= 1 && allPrices.length < 10;
-      i--
-    ) {
-      const topMatch = await Poe2Trade.getItemByAttributes(
-        await this.getComparableSearchParams(
-          item,
-          metadata,
-          selectedExplicits,
-          selectedImplicits,
-          i,
-          includeItemLevel,
-        ),
-        itemLeague,
-      );
-      //await wait(1000);
-
-      // ignore your own listing
-      const filtered = (topMatch.result || []).filter((i) => i != item.id);
-      const topPrices = await this.getPricesForItemIds(
-        filtered,
-        "exalted",
-        itemLeague,
-      );
-      //await wait(5000);
-
-      allPrices.push(...topPrices);
-    }
-
-    if (!selectedExplicits.length) {
-      // Items without explicit mods need a base-item lookup instead.
-      console.log("fetching normal item", allPrices);
-      const normal = await Poe2Trade.getItemByAttributes(
-        await this.getComparableSearchParams(
-          item,
-          metadata,
-          [],
-          selectedImplicits,
-          0,
-          includeItemLevel,
-        ),
-        itemLeague,
-      );
-      //await wait(1000);
-      const filtered = (normal.result || []).filter((i) => i != item.id);
-      const sampledItems = this.sampleRange(filtered, 10);
-      const normalPrices = await this.getPricesForItemIds(
-        sampledItems,
-        "exalted",
-        itemLeague,
-      );
-      allPrices.push(...normalPrices);
-    }
+    // Use the exact same search query and result set as the Search button.
+    const matchingItems = await this.findMatchingItem(
+      item,
+      itemLeague,
+      modifierSelection,
+      modifierRangePercent,
+    );
+    const filtered = (matchingItems.result || []).filter(
+      (id) => id !== item.id,
+    );
+    allPrices.push(
+      ...(await this.getPricesForItemIds(filtered, currency, itemLeague)),
+    );
 
     await this.fetchManyExchangeRates(
       currency,
@@ -531,6 +516,9 @@ class PriceEstimator {
         implicitCount: selectedImplicits.length,
         explicitHashes: selectedExplicits.map((modifier) => modifier.hash),
         implicitHashes: selectedImplicits.map((modifier) => modifier.hash),
+        modifierRangePercent: normalizeModifierRangePercent(
+          modifierRangePercent,
+        ),
       },
     };
 
@@ -546,20 +534,24 @@ class PriceEstimator {
 
     this.cachePriceEstimate(item.item.id, estimate);
     return estimate;
-    // perform some searches based off the explicits to see if we can find comparable items
-    // but we also want to learn about which mods are valuable for rares
-    // we can detect this by the general pattern of item_type, item_rarity, (mod1, mod2, ...modN) => price floor
-    // we can also learn the max tiers by performing a search for item_type, mod descending. we should save these facts
-    // unique items should be handled by searching for the exact item with the mods equal or greater
   }
 
   matchesModifierSelection(
     item: Poe2Item,
     estimate: Estimate,
     modifierSelection?: ModifierSelection,
+    modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
   ) {
     if (
       estimate.search?.modifierComparisonVersion !== MODIFIER_COMPARISON_VERSION
+    ) {
+      return false;
+    }
+
+    if (
+      estimate.search?.modifierRangePercent !== undefined &&
+      estimate.search.modifierRangePercent !==
+        normalizeModifierRangePercent(modifierRangePercent)
     ) {
       return false;
     }

@@ -1,5 +1,6 @@
 import { Job } from "./Job";
 import {
+  DEFAULT_MODIFIER_RANGE_PERCENT,
   DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES,
   Estimate,
   isEstimateFresh,
@@ -40,6 +41,7 @@ export class PriceCheckAllItems extends Job<Estimate> {
     private league?: string,
     private modifierSelections: Record<string, ModifierSelection> = {},
     private cooldownMinutes = DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES,
+    private modifierRangePercent = DEFAULT_MODIFIER_RANGE_PERCENT,
   ) {
     super(
       "price-check-items",
@@ -68,6 +70,7 @@ export class PriceCheckAllItems extends Job<Estimate> {
           item,
           cachedEstimate,
           modifierSelection,
+          this.modifierRangePercent,
         );
 
       if (canUseCachedEstimate) {
@@ -82,6 +85,7 @@ export class PriceCheckAllItems extends Job<Estimate> {
             item,
             this.league,
             modifierSelection,
+            this.modifierRangePercent,
           );
           yield {
             total: this.filteredItems.length,

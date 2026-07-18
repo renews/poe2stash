@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import {
   getComparablePriceCurrency,
   buildModifierSearchFilters,
+  DEFAULT_MODIFIER_RANGE_PERCENT,
   getItemSearchFilters,
   getItemSearchMetadata,
   getExchangeRateCacheKey,
@@ -106,6 +107,43 @@ test("includes gem level and quality in gem search metadata", () => {
   });
 });
 
+test("does not send a gem name in trade searches", async () => {
+  const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
+  let capturedSearch: Parameters<typeof Poe2Trade.getItemByAttributes>[0];
+
+  Poe2Trade.getItemByAttributes = async (searchParams) => {
+    capturedSearch = searchParams;
+    return { id: "query-id", complexity: 0, result: [], total: 0 };
+  };
+
+  try {
+    await PriceChecker.findMatchingItem(
+      {
+        item: {
+          name: "Spark",
+          typeLine: "Spark",
+          baseType: "Spark",
+          frameType: 4,
+          gemLevel: 15,
+          quality: 20,
+        },
+      } as Poe2Item,
+      "Standard",
+    );
+
+    expect(capturedSearch).not.toHaveProperty("name");
+    expect(capturedSearch).toMatchObject({
+      baseType: "Spark",
+      gem_level: 15,
+      gem_level_max: 15,
+      quality: 20,
+      quality_max: 20,
+    });
+  } finally {
+    Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
 test("includes item level for non-gems but not gems", () => {
   const rare = {
     item: {
@@ -141,7 +179,7 @@ test("includes item level for non-gems but not gems", () => {
   });
 });
 
-test("uses pseudo totals and a seven percent range for comparable modifiers", () => {
+test("uses the default comparison range for comparable modifiers", () => {
   const filters = buildModifierSearchFilters(
     [
       { hash: "explicit.life", parsed: "100 to maximum Life", value1: 100 },
@@ -182,15 +220,28 @@ test("uses pseudo totals and a seven percent range for comparable modifiers", ()
   );
 
   expect(filters.pseudo).toEqual([
-    { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
-    { id: "pseudo.pseudo_total_energy_shield", min: 186, max: 214 },
-    { id: "pseudo.pseudo_total_resistance", min: 37, max: 43 },
+    { id: "pseudo.pseudo_total_life", min: 88, max: 112 },
+    { id: "pseudo.pseudo_total_energy_shield", min: 176, max: 224 },
+    { id: "pseudo.pseudo_total_resistance", min: 35, max: 45 },
   ]);
   expect(filters.explicit).toEqual([
     { id: "explicit.skill-level", min: 2 },
     { id: "explicit.skill-gem-requirements", min: 20 },
-    { id: "explicit.attack-speed", min: 46, max: 54 },
+    { id: "explicit.attack-speed", min: 44, max: 56 },
   ]);
+});
+
+test("uses a configured comparison range for comparable modifiers", () => {
+  const filters = buildModifierSearchFilters(
+    [{ hash: "explicit.life", parsed: "100 to maximum Life", value1: 100 }],
+    [],
+    20,
+  );
+
+  expect(filters.pseudo).toEqual([
+    { id: "pseudo.pseudo_total_life", min: 80, max: 120 },
+  ]);
+  expect(DEFAULT_MODIFIER_RANGE_PERCENT).toBe(12);
 });
 
 test("serializes pseudo filters into the trade stat group", () => {
@@ -251,11 +302,11 @@ test("uses pseudo and ranged filters for the Search lookup", async () => {
     );
 
     expect(capturedSearch.pseudo).toEqual([
-      { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
-      { id: "pseudo.pseudo_total_resistance", min: 23, max: 27 },
+      { id: "pseudo.pseudo_total_life", min: 88, max: 112 },
+      { id: "pseudo.pseudo_total_resistance", min: 22, max: 28 },
     ]);
     expect(capturedSearch.explicit).toEqual([
-      { id: "explicit.stat_681332047", min: 46, max: 54 },
+      { id: "explicit.stat_681332047", min: 44, max: 56 },
     ]);
   } finally {
     Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
@@ -289,13 +340,88 @@ test("uses the same selected modifiers for the Search lookup", async () => {
     );
 
     expect(capturedSearch.pseudo).toEqual([
-      { id: "pseudo.pseudo_total_life", min: 93, max: 107 },
+      { id: "pseudo.pseudo_total_life", min: 88, max: 112 },
     ]);
     expect(capturedSearch.explicit).toEqual([
-      { id: "explicit.stat_681332047", min: 46, max: 54 },
+      { id: "explicit.stat_681332047", min: 44, max: 56 },
     ]);
   } finally {
     Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
+test("uses the Search result set for price estimates", async () => {
+  const originalFindMatchingItem = PriceChecker.findMatchingItem;
+  const originalGetPricesForItemIds = PriceChecker.getPricesForItemIds;
+  const originalFetchManyExchangeRates = PriceChecker.fetchManyExchangeRates;
+  const originalUpscalePrice = PriceChecker.upscalePrice;
+  const originalMatchesCurrentPrice = PriceChecker.matchesCurrentPrice;
+  const originalCachePriceEstimate = PriceChecker.cachePriceEstimate;
+  const item = {
+    id: "item-id",
+    item: {
+      id: "item-id",
+      baseType: "Fine Ring",
+      explicitMods: ["100 to maximum Life", "50% increased Attack Speed"],
+      implicitMods: [],
+    },
+  } as Poe2Item;
+  const modifierSelection = {
+    explicit: [true, true],
+    implicit: [],
+    itemLevel: false,
+  };
+  const searchArguments: unknown[][] = [];
+  const pricedIds: string[][] = [];
+
+  PriceChecker.findMatchingItem = (async (...args) => {
+    searchArguments.push(args);
+    return {
+      id: "search-id",
+      complexity: 0,
+      result: ["matching-id"],
+      total: 1,
+    };
+  }) as typeof PriceChecker.findMatchingItem;
+  PriceChecker.getPricesForItemIds = (async (ids) => {
+    pricedIds.push(ids);
+    return [
+      {
+        amount: 10,
+        currency: "exalted",
+        itemId: "matching-id",
+        listedAmount: 10,
+        listedCurrency: "exalted",
+      },
+    ];
+  }) as typeof PriceChecker.getPricesForItemIds;
+  PriceChecker.fetchManyExchangeRates = async () => {};
+  PriceChecker.upscalePrice = async (price) => price;
+  PriceChecker.matchesCurrentPrice = async () => false;
+  PriceChecker.cachePriceEstimate = () => {};
+
+  try {
+    await PriceChecker.estimateItemPrice(
+      item,
+      "Standard",
+      modifierSelection,
+    );
+
+    expect(searchArguments).toHaveLength(1);
+    expect(searchArguments[0]).toEqual([
+      item,
+      "Standard",
+      modifierSelection,
+      DEFAULT_MODIFIER_RANGE_PERCENT,
+    ]);
+    expect(pricedIds).toEqual([["matching-id"]]);
+  } finally {
+    PriceChecker.findMatchingItem = originalFindMatchingItem;
+    PriceChecker.getPricesForItemIds = originalGetPricesForItemIds;
+    PriceChecker.fetchManyExchangeRates = originalFetchManyExchangeRates;
+    PriceChecker.upscalePrice = originalUpscalePrice;
+    PriceChecker.matchesCurrentPrice = originalMatchesCurrentPrice;
+    PriceChecker.cachePriceEstimate = originalCachePriceEstimate;
   }
 });
 

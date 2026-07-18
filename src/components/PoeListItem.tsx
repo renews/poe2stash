@@ -151,6 +151,7 @@ export function PoeListItem(props: {
   onModifierSelectionChange?: (selection: ModifierSelection) => void;
   priceSuggestion?: Price;
   priceEstimate?: Estimate;
+  modifierRangePercent?: number;
   onPriceClick?: (
     item: Poe2Item,
     selection?: ModifierSelection,
@@ -211,6 +212,7 @@ export function PoeListItem(props: {
           item,
           itemLeague,
           props.modifierSelection,
+          props.modifierRangePercent,
         );
         if (!matchingItem?.id) {
           setSearchError("No trade search was created.");
@@ -417,7 +419,7 @@ export function PoeListItem(props: {
         </div>
 
         {priceEstimate && (
-          <details open className="bg-gray-700 p-3 rounded-md mb-4 text-left">
+          <details className="bg-gray-700 p-3 rounded-md mb-4 text-left">
             <summary className="cursor-pointer font-semibold text-orange-300">
               Suggested price uses {priceEstimate.comparables?.length || 0}{" "}
               listings
