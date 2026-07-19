@@ -178,6 +178,7 @@ interface AppContextType {
     item: Poe2Item,
     selection?: ModifierSelection,
   ) => Promise<void>;
+  priceCheckItems: (items: Poe2Item[]) => Promise<void>;
   refreshItem: (item: Poe2Item) => Promise<void>;
   refreshAllItems: () => Promise<void>;
   priceCheckAllItems: () => Promise<void>;
@@ -595,6 +596,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     getItems,
     filterByStash,
     priceCheckItem,
+    priceCheckItems,
     refreshItem,
     refreshAllItems,
     priceCheckAllItems,

@@ -4,16 +4,19 @@ import { PoeListItem } from "./PoeListItem";
 import { LiveMonitorButton } from "./LiveMonitorButton";
 import LiveMonitor from "./LiveMonitor";
 import { JobQueue } from "./JobQueue";
-import {
-  formFieldClassName,
-  successButtonClassName,
-} from "./formStyles";
+import { formFieldClassName, successButtonClassName } from "./formStyles";
 import {
   getPublicListingStashCounts,
   getPublicListingStashLabel,
 } from "../services/stashScope";
+import {
+  CompactItemList,
+  ItemViewMode,
+  ItemViewToggle,
+} from "./CompactItemList";
 
 const MainPage: React.FC = () => {
+  const [itemView, setItemView] = React.useState<ItemViewMode>("compact");
   const {
     accountName,
     selectedLeague,
@@ -37,6 +40,7 @@ const MainPage: React.FC = () => {
     setJobs,
     filterByStash,
     priceCheckItem,
+    priceCheckItems,
     modifierRangePercent,
     refreshItem,
     refreshAllItems,
@@ -92,10 +96,7 @@ const MainPage: React.FC = () => {
             placeholder="Search items..."
             className={`${formFieldClassName} min-w-48`}
           />
-          <button
-            onClick={refreshAllItems}
-            className={successButtonClassName}
-          >
+          <button onClick={refreshAllItems} className={successButtonClassName}>
             Refresh All
           </button>
 
@@ -106,6 +107,7 @@ const MainPage: React.FC = () => {
           >
             {isPriceChecking ? "Checking Prices..." : "Price Check All"}
           </button>
+          <ItemViewToggle value={itemView} onChange={setItemView} />
           <div className="flex-grow text-right">
             {filteredItems.length} items found
           </div>
@@ -130,22 +132,34 @@ const MainPage: React.FC = () => {
 
       {errorMessage && <div className="text-red-500 mb-4">{errorMessage}</div>}
 
-      {filteredItems.map((item) => (
-        <PoeListItem
-          key={item.id}
-          item={item}
-          league={selectedLeague}
-          onPriceClick={priceCheckItem}
-          modifierRangePercent={modifierRangePercent}
-          onRefreshClick={refreshItem}
-          modifierSelection={modifierSelections[item.id]}
-          onModifierSelectionChange={(selection) =>
-            setModifierSelection(item.id, selection)
-          }
-          priceSuggestion={priceEstimates[item.id]?.price}
-          priceEstimate={priceEstimates[item.id]}
+      {itemView === "compact" ? (
+        <CompactItemList
+          items={filteredItems}
+          priceEstimates={priceEstimates}
+          modifierSelections={modifierSelections}
+          onPriceCheck={priceCheckItem}
+          onModifierSelectionChange={setModifierSelection}
+          onStashPriceCheck={priceCheckItems}
+          isPriceChecking={isPriceChecking}
         />
-      ))}
+      ) : (
+        filteredItems.map((item) => (
+          <PoeListItem
+            key={item.id}
+            item={item}
+            league={selectedLeague}
+            onPriceClick={priceCheckItem}
+            modifierRangePercent={modifierRangePercent}
+            onRefreshClick={refreshItem}
+            modifierSelection={modifierSelections[item.id]}
+            onModifierSelectionChange={(selection) =>
+              setModifierSelection(item.id, selection)
+            }
+            priceSuggestion={priceEstimates[item.id]?.price}
+            priceEstimate={priceEstimates[item.id]}
+          />
+        ))
+      )}
     </div>
   );
 };

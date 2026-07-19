@@ -154,6 +154,25 @@ export function formatPriceAmount(amount: number): string {
     : formatted;
 }
 
+export const GREAT_PRICE_LABEL = "Great price!";
+
+export function formatSuggestedPriceLabel(
+  price: Price | undefined,
+  matchesCurrentPrice = false,
+  includeLabel = false,
+) {
+  if (matchesCurrentPrice) {
+    return GREAT_PRICE_LABEL;
+  }
+
+  if (!price) {
+    return "Not checked";
+  }
+
+  const prefix = includeLabel ? "suggested price: " : "";
+  return `${prefix}~${formatPriceAmount(price.amount)} ${price.currency}`;
+}
+
 export function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
   const month = String(date.getMonth() + 1).padStart(2, "0");

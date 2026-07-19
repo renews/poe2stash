@@ -2,29 +2,25 @@ import {
   formatItemMod,
   formatDateTime,
   formatPriceAmount,
+  formatSuggestedPriceLabel,
   ModifierSelection,
   Price,
   Poe2Item,
   getItemModifierHash,
   getModifierDisplayKind,
-  ModifierDisplayKind,
 } from "../services/types";
 import { useState } from "react";
-import {
-  Estimate,
-  getDefaultRequiredLevelRange,
-  getItemRequiredLevel,
-  isGemItem,
-  PriceChecker,
-} from "../services/PriceEstimator";
+import { Estimate, PriceChecker } from "../services/PriceEstimator";
 import { createTradeSearchUrl } from "../services/externalLinks";
 import { getListingSinceLabel } from "../services/listing";
-import { formFieldClassName } from "./formStyles";
 import { ChevronDown } from "lucide-react";
 import {
   getItemBlockExpanded,
   setItemBlockExpanded,
 } from "../services/itemBlockState";
+import { completeModifierSelection } from "../services/modifierSelection";
+import { modifierColorClass } from "./formStyles";
+import { ItemPriceCheckOptions } from "./ItemPriceCheckOptions";
 
 export const ItemNameWithRarity: React.FC<{
   item: Poe2Item;
@@ -68,8 +64,6 @@ export const ItemNameWithRarity: React.FC<{
     </button>
   );
 };
-
-type ModifierKind = "implicit" | "explicit";
 
 const ComparableItemTooltip: React.FC<{
   item: Poe2Item;
@@ -196,58 +190,6 @@ export function PoeListItem(props: {
   const [isExpanded, setIsExpanded] = useState(() =>
     getItemBlockExpanded(item.id),
   );
-  const gemItem = isGemItem(item);
-  const requiredLevel = gemItem ? undefined : getItemRequiredLevel(item);
-  const defaultRequiredLevelRange = gemItem
-    ? undefined
-    : getDefaultRequiredLevelRange(requiredLevel);
-
-  const getCompleteModifierSelection = (
-    overrides: Partial<ModifierSelection> = {},
-  ): ModifierSelection => ({
-    implicit:
-      props.modifierSelection?.implicit ||
-      (item.item.implicitMods || []).map(() => true),
-    explicit:
-      props.modifierSelection?.explicit ||
-      (item.item.explicitMods || []).map(() => true),
-    itemLevel: props.modifierSelection?.itemLevel === true,
-    requiredLevel: props.modifierSelection?.requiredLevel === true,
-    ...(defaultRequiredLevelRange
-      ? {
-          requiredLevelMin:
-            props.modifierSelection?.requiredLevelMin ??
-            defaultRequiredLevelRange.min,
-          requiredLevelMax:
-            props.modifierSelection?.requiredLevelMax ??
-            defaultRequiredLevelRange.max,
-        }
-      : {}),
-    ...overrides,
-  });
-
-  const isModifierSelected = (kind: ModifierKind, index: number) =>
-    props.modifierSelection?.[kind]?.[index] !== false;
-
-  const updateModifierSelection = (
-    kind: ModifierKind,
-    index: number,
-    checked: boolean,
-  ) => {
-    const modifiers =
-      kind === "implicit"
-        ? item.item.implicitMods || []
-        : item.item.explicitMods || [];
-    const current = props.modifierSelection?.[kind] || [];
-    const values = modifiers.map(
-      (_modifier, modifierIndex) => current[modifierIndex] !== false,
-    );
-    values[index] = checked;
-
-    props.onModifierSelectionChange?.(
-      getCompleteModifierSelection({ [kind]: values }),
-    );
-  };
 
   const copyNameToClipboard = () => {
     navigator.clipboard.writeText(item.item.name || item.item.typeLine);
@@ -267,7 +209,7 @@ export function PoeListItem(props: {
       const matchingItem = await PriceChecker.findMatchingItem(
         item,
         itemLeague,
-        getCompleteModifierSelection(),
+        completeModifierSelection(item, props.modifierSelection),
         props.modifierRangePercent,
       );
       if (!matchingItem?.id) {
@@ -275,10 +217,7 @@ export function PoeListItem(props: {
         return;
       }
 
-      window.open(
-        createTradeSearchUrl(itemLeague, matchingItem.id),
-        "_blank",
-      );
+      window.open(createTradeSearchUrl(itemLeague, matchingItem.id), "_blank");
     } catch (error) {
       setSearchError(
         error instanceof Error ? error.message : "Unable to open trade search.",
@@ -293,7 +232,10 @@ export function PoeListItem(props: {
     setPriceCheckError(null);
 
     try {
-      await props.onPriceClick(item, getCompleteModifierSelection());
+      await props.onPriceClick(
+        item,
+        completeModifierSelection(item, props.modifierSelection),
+      );
     } catch (error) {
       setPriceCheckError(
         error instanceof Error ? error.message : "Price check failed.",
@@ -347,16 +289,22 @@ export function PoeListItem(props: {
               {item.listing.price.amount} {item.listing.price.currency}
               {props.priceSuggestion && (
                 <p
-                  className="font-semibold text-orange-600"
+                  className={
+                    hasGreatPrice
+                      ? "font-normal text-green-600"
+                      : "font-semibold text-orange-600"
+                  }
                   title={
                     !hasGreatPrice && props.priceSuggestion.lowerPrice
                       ? `Lower denomination: ${formatPriceAmount(props.priceSuggestion.lowerPrice.amount)} ${props.priceSuggestion.lowerPrice.currency}`
                       : undefined
                   }
                 >
-                  {hasGreatPrice
-                    ? "Already with a great price!"
-                    : `suggested price: ~${formatPriceAmount(props.priceSuggestion.amount)} ${props.priceSuggestion.currency}`}
+                  {formatSuggestedPriceLabel(
+                    props.priceSuggestion,
+                    hasGreatPrice,
+                    true,
+                  )}
                 </p>
               )}
             </div>
@@ -367,180 +315,12 @@ export function PoeListItem(props: {
           <p className="text-red-500 font-semibold mb-2">Corrupted</p>
         )}
 
-        <div className={`space-y-4 ${isExpanded ? "" : "hidden"}`}>
-          {!gemItem && (
-            <div className="bg-gray-700 p-3 rounded-md">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-200">
-                <input
-                  type="checkbox"
-                  checked={props.modifierSelection?.itemLevel === true}
-                  onChange={(event) =>
-                    props.onModifierSelectionChange?.(
-                      getCompleteModifierSelection({
-                        itemLevel: event.target.checked,
-                      }),
-                    )
-                  }
-                  className="form-checkbox text-blue-600"
-                />
-                <span>Item level (minimum): {item.item.ilvl}</span>
-              </label>
-            </div>
-          )}
-
-          {defaultRequiredLevelRange && (
-            <div className="bg-gray-700 p-3 rounded-md">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-200">
-                <input
-                  type="checkbox"
-                  checked={props.modifierSelection?.requiredLevel === true}
-                  onChange={(event) =>
-                    props.onModifierSelectionChange?.(
-                      getCompleteModifierSelection({
-                        requiredLevel: event.target.checked,
-                      }),
-                    )
-                  }
-                  className="form-checkbox text-blue-600"
-                />
-                <span>Required level</span>
-              </label>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <label className="text-xs text-gray-300">
-                  Minimum
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    disabled={
-                      props.modifierSelection?.requiredLevel !== true
-                    }
-                    value={
-                      props.modifierSelection?.requiredLevelMin ??
-                      defaultRequiredLevelRange.min
-                    }
-                    onChange={(event) =>
-                      props.onModifierSelectionChange?.(
-                        getCompleteModifierSelection({
-                          requiredLevelMin: Math.max(
-                            0,
-                            Math.round(Number(event.target.value)),
-                          ),
-                        }),
-                      )
-                    }
-                    className={`${formFieldClassName} mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50`}
-                  />
-                </label>
-                <label className="text-xs text-gray-300">
-                  Maximum
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    disabled={
-                      props.modifierSelection?.requiredLevel !== true
-                    }
-                    value={
-                      props.modifierSelection?.requiredLevelMax ??
-                      defaultRequiredLevelRange.max
-                    }
-                    onChange={(event) =>
-                      props.onModifierSelectionChange?.(
-                        getCompleteModifierSelection({
-                          requiredLevelMax: Math.max(
-                            0,
-                            Math.round(Number(event.target.value)),
-                          ),
-                        }),
-                      )
-                    }
-                    className={`${formFieldClassName} mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50`}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-
-          {item.item.implicitMods && item.item.implicitMods.length > 0 && (
-            <div className="bg-gray-700 p-3 rounded-md">
-              <h3 className="font-semibold text-blue-300 mb-1">
-                Implicit Mods:
-              </h3>
-              <ul className="list-none text-sm text-left space-y-1">
-                {item.item.implicitMods?.map((mod, index) => (
-                  <li
-                    key={index}
-                    className={modifierColorClass(
-                      getModifierDisplayKind(item, "implicit", index),
-                    )}
-                  >
-                    <label className="flex cursor-pointer items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isModifierSelected("implicit", index)}
-                        onChange={(event) =>
-                          updateModifierSelection(
-                            "implicit",
-                            index,
-                            event.target.checked,
-                          )
-                        }
-                        className="form-checkbox mt-1 text-blue-600"
-                      />
-                      <span>{formatItemMod(mod)}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {item.item.enchantMods && item.item.enchantMods.length > 0 && (
-            <div className="bg-gray-700 p-3 rounded-md">
-              <h3 className="font-semibold text-purple-300 mb-1">
-                Enchant Mods:
-              </h3>
-              <ul className="list-none text-sm text-left space-y-1">
-                {item.item.enchantMods?.map((mod, index) => (
-                  <li key={index} className="text-purple-200">
-                    {formatItemMod(mod)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="bg-gray-700 p-3 rounded-md">
-            <h3 className="font-semibold text-gray-300 mb-1">Explicit Mods:</h3>
-            <ul className="list-none text-sm text-left space-y-1">
-              {item.item.explicitMods?.map((mod, index) => (
-                <li
-                  key={index}
-                  className={modifierColorClass(
-                    getModifierDisplayKind(item, "explicit", index),
-                  )}
-                >
-                  <label className="flex cursor-pointer items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={isModifierSelected("explicit", index)}
-                      onChange={(event) =>
-                        updateModifierSelection(
-                          "explicit",
-                          index,
-                          event.target.checked,
-                        )
-                      }
-                      className="form-checkbox mt-1 text-blue-600"
-                    />
-                    <span>{formatItemMod(mod)}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <ItemPriceCheckOptions
+          item={item}
+          modifierSelection={props.modifierSelection}
+          onModifierSelectionChange={props.onModifierSelectionChange}
+          className={`space-y-4 ${isExpanded ? "" : "hidden"}`}
+        />
 
         {isExpanded && priceEstimate && (
           <details className="bg-gray-700 p-3 rounded-md mb-4 text-left">
@@ -558,8 +338,7 @@ export function PoeListItem(props: {
                   {marketValuation.method === "current-snapshot"
                     ? "current market snapshot"
                     : "market history"}{" "}
-                  · Updated:{" "}
-                  {formatDateTime(marketValuation.updatedAt)}
+                  · Updated: {formatDateTime(marketValuation.updatedAt)}
                   {comparableCount > 0
                     ? ` · ${comparableCount} official trade comparable${comparableCount === 1 ? "" : "s"} shown below`
                     : " · official trade comparables unavailable"}
@@ -575,9 +354,9 @@ export function PoeListItem(props: {
             </p>
             {!marketIsPrimary && marketValuation && (
               <p className="mt-2 rounded border border-blue-700 bg-blue-950/40 p-2 text-xs text-blue-200">
-                Poe2Scout market baseline: {" "}
-                {formatPriceAmount(marketValuation.price.amount)} {" "}
-                {marketValuation.price.currency} · Updated: {" "}
+                Poe2Scout market baseline:{" "}
+                {formatPriceAmount(marketValuation.price.amount)}{" "}
+                {marketValuation.price.currency} · Updated:{" "}
                 {formatDateTime(marketValuation.updatedAt)}
               </p>
             )}
@@ -646,8 +425,7 @@ export function PoeListItem(props: {
                         className="group relative rounded px-1 py-0.5 hover:bg-gray-600 focus:bg-gray-600"
                       >
                         <span>
-                          {comparable.listedAmount}{" "}
-                          {comparable.listedCurrency}
+                          {comparable.listedAmount} {comparable.listedCurrency}
                           {comparable.currency !==
                             comparable.listedCurrency && (
                             <span className="text-gray-400">
@@ -668,9 +446,11 @@ export function PoeListItem(props: {
                 </ul>
               </div>
             )}
-            <p className="text-sm text-gray-300 mt-2">
+            <p
+              className={`text-sm mt-2 ${hasGreatPrice ? "text-green-600" : "text-gray-300"}`}
+            >
               {hasGreatPrice
-                ? "Already with a great price!"
+                ? formatSuggestedPriceLabel(priceEstimate.price, hasGreatPrice)
                 : marketIsPrimary
                   ? `Suggested price: ${formatPriceAmount(priceEstimate.price.amount)} ${priceEstimate.price.currency}`
                   : `Suggested price: ${formatPriceAmount(priceEstimate.price.amount)} ${priceEstimate.price.currency} | Spread: ${formatPriceAmount(priceEstimate.stdDev.amount)} ${priceEstimate.stdDev.currency}`}
@@ -680,7 +460,9 @@ export function PoeListItem(props: {
           </details>
         )}
 
-        <p className={`${isExpanded ? "" : "hidden"} text-sm text-gray-400 mt-4`}>
+        <p
+          className={`${isExpanded ? "" : "hidden"} text-sm text-gray-400 mt-4`}
+        >
           Stash: {item.listing.stash.name} (x: {item.listing.stash.x}, y:{" "}
           {item.listing.stash.y})
         </p>
@@ -688,7 +470,9 @@ export function PoeListItem(props: {
           <p className="mt-1 text-sm text-gray-400">{listingSinceLabel}</p>
         )}
       </div>
-      <div className={`${isExpanded ? "flex" : "hidden"} flex-col sm:flex-col flex-shrink-0 mt-4 sm:mt-0 sm:ml-4 w-full sm:w-auto gap-4`}>
+      <div
+        className={`${isExpanded ? "flex" : "hidden"} flex-col sm:flex-col flex-shrink-0 mt-4 sm:mt-0 sm:ml-4 w-full sm:w-auto gap-4`}
+      >
         <button
           onClick={() => props.onRefreshClick?.(item)}
           className={buttonStyle}
@@ -723,19 +507,4 @@ export function PoeListItem(props: {
       </div>
     </div>
   );
-}
-
-function modifierColorClass(kind: ModifierDisplayKind) {
-  switch (kind) {
-    case "implicit":
-      return "text-blue-200";
-    case "enchant":
-      return "text-purple-200";
-    case "prefix":
-      return "text-cyan-200";
-    case "suffix":
-      return "text-fuchsia-200";
-    default:
-      return "text-gray-200";
-  }
 }
