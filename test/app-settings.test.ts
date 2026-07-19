@@ -7,6 +7,7 @@ import {
 } from "../src/contexts/AppContext";
 import {
   canStartAccountSync,
+  canViewSaleHistory,
   shouldOpenConfiguration,
 } from "../src/appNavigation";
 
@@ -45,4 +46,10 @@ test("only enables account sync for a non-empty account when idle", () => {
   expect(canStartAccountSync("", false)).toBe(false);
   expect(canStartAccountSync("BoostCoder#0407", true)).toBe(false);
   expect(canStartAccountSync("BoostCoder#0407", false)).toBe(true);
+});
+
+test("only allows sale history for a configured account", () => {
+  expect(canViewSaleHistory("")).toBe(false);
+  expect(canViewSaleHistory("   ")).toBe(false);
+  expect(canViewSaleHistory("BoostCoder#0407")).toBe(true);
 });

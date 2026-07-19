@@ -9,10 +9,12 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import packageJson from "../../package.json";
+import { canViewSaleHistory } from "../appNavigation";
 
 interface SideMenuProps {
   isOpen: boolean;
   onClose: () => void;
+  accountName: string;
 }
 
 export const SideMenuFooter: React.FC = () => (
@@ -22,7 +24,11 @@ export const SideMenuFooter: React.FC = () => (
   </div>
 );
 
-export const SideMenu: React.FC<SideMenuProps> = ({ isOpen, onClose }) => {
+export const SideMenu: React.FC<SideMenuProps> = ({
+  isOpen,
+  onClose,
+  accountName,
+}) => {
   const handleLinkClick = () => {
     onClose();
   };
@@ -67,14 +73,16 @@ export const SideMenu: React.FC<SideMenuProps> = ({ isOpen, onClose }) => {
           <Coins className="h-5 w-5 mr-3" />
           <span>Currency Rates</span>
         </Link>
-        <Link
-          to="/sale-history"
-          className="flex items-center px-6 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-          onClick={handleLinkClick}
-        >
-          <HistoryIcon className="h-5 w-5 mr-3" />
-          <span>Sale History</span>
-        </Link>
+        {canViewSaleHistory(accountName) && (
+          <Link
+            to="/sale-history"
+            className="flex items-center px-6 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            onClick={handleLinkClick}
+          >
+            <HistoryIcon className="h-5 w-5 mr-3" />
+            <span>Sale History</span>
+          </Link>
+        )}
         <Link
           to="/configuration"
           className="flex items-center px-6 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"

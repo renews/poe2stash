@@ -13,7 +13,10 @@ import SaleHistoryPage from "./components/SaleHistoryPage";
 import { SideMenu } from "./components/SideMenu";
 import { AppContextProvider } from "./contexts/AppContext";
 import { useAppContext } from "./contexts/AppContext";
-import { shouldOpenConfiguration } from "./appNavigation";
+import {
+  canViewSaleHistory,
+  shouldOpenConfiguration,
+} from "./appNavigation";
 import "./App.css";
 
 const AppContent: React.FC = () => {
@@ -24,6 +27,7 @@ const AppContent: React.FC = () => {
     <div className="relative flex h-screen">
       <SideMenu
         isOpen={isSideMenuOpen}
+        accountName={accountName}
         onClose={() => setIsSideMenuOpen(false)}
       />
       <div className="flex-1 overflow-y-auto relative">
@@ -60,7 +64,16 @@ const AppContent: React.FC = () => {
           <Route path="/messages" element={<MessagesPage />} />
           <Route path="/currency-rates" element={<CurrencyRatesPage />} />
           <Route path="/configuration" element={<ConfigurationPage />} />
-          <Route path="/sale-history" element={<SaleHistoryPage />} />
+          <Route
+            path="/sale-history"
+            element={
+              canViewSaleHistory(accountName) ? (
+                <SaleHistoryPage />
+              ) : (
+                <Navigate to="/configuration" replace />
+              )
+            }
+          />
         </Routes>
       </div>
     </div>
