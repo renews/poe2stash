@@ -17,6 +17,33 @@ import {
   primaryButtonClassName,
 } from "./formStyles";
 
+export const ChatMonitorExplanation: React.FC = () => (
+  <section
+    aria-label="About Chat Monitor"
+    className="mb-4 rounded-lg border border-blue-800 bg-blue-950/30 p-4 text-sm text-blue-100"
+  >
+    <p>
+      Chat Monitor watches the selected Path of Exile 2 Client.txt log for
+      incoming buyer whispers about your publicly listed items.
+    </p>
+    <ul className="mt-2 list-disc space-y-1 pl-5 text-blue-200">
+      <li>
+        It extracts the buyer, requested item, offered price, stash tab, and
+        position, then links the whisper to your currently synced item when
+        possible.
+      </li>
+      <li>
+        Active Only hides messages for items that are no longer present in the
+        current synced listings.
+      </li>
+      <li>
+        It does not confirm completed sales. Use Sale History for completed
+        Ange shop transactions.
+      </li>
+    </ul>
+  </section>
+);
+
 const MessagesPage: React.FC = () => {
   const [chatFilePath, setChatFilePath] = useState(
     () => chatService.getSavedChatFilePath() || "",
@@ -168,6 +195,7 @@ const MessagesPage: React.FC = () => {
   return (
     <div className="w-full p-4 pt-16">
       <h1 className="text-2xl font-bold mb-4">Chat Monitor</h1>
+      <ChatMonitorExplanation />
       <form onSubmit={handleSubmit} className="mb-4">
         <input
           type="file"
