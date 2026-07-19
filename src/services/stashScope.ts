@@ -1,7 +1,13 @@
 import { Poe2Item } from "./types";
 
-export const PUBLIC_LISTING_SCOPE_NOTICE =
-  "Account sync includes publicly listed trade items only. Private and unlisted stash contents are not available through the supported Path of Exile 2 APIs.";
+const stashTabNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+export function sortStashTabNames(names: string[]) {
+  return [...names].sort(stashTabNameCollator.compare);
+}
 
 export function getPublicListingStashCounts(items: Poe2Item[]) {
   return items.reduce<Record<string, number>>(

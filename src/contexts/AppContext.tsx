@@ -28,6 +28,7 @@ import { Leagues, League } from "../data/leagues";
 import { NewItemTracker } from "../services/NewItemTracker";
 import { alertOnMispricedItem } from "../services/PriceAlert";
 import { useLiveListingMonitor } from "../hooks/useLiveListingMonitor";
+import { sortStashTabNames } from "../services/stashScope";
 
 export const MODIFIER_SELECTIONS_STORAGE_KEY = "modifierSelections";
 export const SELECTED_LEAGUE_STORAGE_KEY = "selectedLeague";
@@ -293,7 +294,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const updateStashTabs = (items: Poe2Item[]) => {
     const stashes = Poe2Trade.getStashTabs(items);
-    setStashTabs(["All", ...Object.keys(stashes).sort()]);
+    setStashTabs(["All", ...sortStashTabNames(Object.keys(stashes))]);
     setSelectedStash("All");
   };
 

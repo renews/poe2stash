@@ -11,7 +11,6 @@ import {
 import {
   getPublicListingStashCounts,
   getPublicListingStashLabel,
-  PUBLIC_LISTING_SCOPE_NOTICE,
 } from "../services/stashScope";
 
 const MainPage: React.FC = () => {
@@ -53,11 +52,6 @@ const MainPage: React.FC = () => {
   return (
     <div className="w-full p-4 pt-16">
       <h1 className="text-2xl font-bold mb-4 mt-8">Welcome to Poe2Stash</h1>
-
-      <div className="mb-4 rounded-md border border-blue-700 bg-blue-950/40 p-3 text-sm text-blue-100">
-        <p className="font-semibold">Public listing sync</p>
-        <p className="mt-1 text-blue-200">{PUBLIC_LISTING_SCOPE_NOTICE}</p>
-      </div>
 
       {accountName && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-gray-700 bg-gray-800 p-3">

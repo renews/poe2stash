@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   getPublicListingStashCounts,
   getPublicListingStashLabel,
+  sortStashTabNames,
 } from "../src/services/stashScope";
 import { Poe2Item } from "../src/services/types";
 
@@ -37,4 +38,16 @@ test("labels the all-items option as public and includes tab counts", () => {
     "All publicly listed items (3)",
   );
   expect(getPublicListingStashLabel("Shop A", counts)).toBe("Shop A (2)");
+});
+
+test("sorts stash tab names case-insensitively with natural numbers", () => {
+  const names = ["shop 10", "Beta", "Shop 2", "alpha"];
+
+  expect(sortStashTabNames(names)).toEqual([
+    "alpha",
+    "Beta",
+    "Shop 2",
+    "shop 10",
+  ]);
+  expect(names).toEqual(["shop 10", "Beta", "Shop 2", "alpha"]);
 });

@@ -13,7 +13,6 @@ import {
   formLabelClassName,
   primaryButtonClassName,
 } from "./formStyles";
-import { PUBLIC_LISTING_SCOPE_NOTICE } from "../services/stashScope";
 
 const ConfigurationPage: React.FC = () => {
   const {
@@ -132,9 +131,6 @@ const ConfigurationPage: React.FC = () => {
           </button>
         </div>
 
-        <p className="rounded-md border border-blue-700 bg-blue-950/40 p-3 text-sm text-blue-200 sm:col-span-2">
-          {PUBLIC_LISTING_SCOPE_NOTICE}
-        </p>
       </form>
     </div>
   );
