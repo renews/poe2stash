@@ -3,6 +3,7 @@ import { Leagues } from "../src/data/leagues";
 import {
   parseSavedLeague,
   parseSavedModifierRange,
+  parseSavedPriceCheckCooldown,
 } from "../src/contexts/AppContext";
 import {
   canStartAccountSync,
@@ -23,6 +24,15 @@ test("clamps the saved modifier range to the supported slider limits", () => {
   expect(parseSavedModifierRange("4")).toBe(5);
   expect(parseSavedModifierRange("101")).toBe(100);
   expect(parseSavedModifierRange(null)).toBe(12);
+});
+
+test("defaults a missing price-check cooldown without overriding an explicit zero", () => {
+  expect(parseSavedPriceCheckCooldown(null)).toBe(5);
+  expect(parseSavedPriceCheckCooldown(" ")).toBe(5);
+  expect(parseSavedPriceCheckCooldown("invalid")).toBe(5);
+  expect(parseSavedPriceCheckCooldown("-1")).toBe(5);
+  expect(parseSavedPriceCheckCooldown("0")).toBe(0);
+  expect(parseSavedPriceCheckCooldown("15")).toBe(15);
 });
 
 test("opens configuration when no account is configured", () => {

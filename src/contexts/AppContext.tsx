@@ -45,6 +45,17 @@ export function parseSavedModifierRange(value: string | null) {
   return normalizeModifierRangePercent(Number(value));
 }
 
+export function parseSavedPriceCheckCooldown(value: string | null) {
+  if (!value?.trim()) {
+    return DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES;
+  }
+
+  const saved = Number(value);
+  return Number.isFinite(saved) && saved >= 0
+    ? saved
+    : DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES;
+}
+
 export function parseSavedAccountName(value: string | null) {
   return value?.trim() || "";
 }
@@ -175,10 +186,9 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 function getSavedPriceCheckCooldown() {
-  const saved = Number(localStorage.getItem("priceCheckCooldownMinutes"));
-  return Number.isFinite(saved) && saved >= 0
-    ? saved
-    : DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES;
+  return parseSavedPriceCheckCooldown(
+    localStorage.getItem("priceCheckCooldownMinutes"),
+  );
 }
 
 function getSavedModifierRange() {
