@@ -19,8 +19,13 @@ import {
 import { createTradeSearchUrl } from "../services/externalLinks";
 import { getListingSinceLabel } from "../services/listing";
 import { formFieldClassName } from "./formStyles";
+import { ChevronDown } from "lucide-react";
 
-const ItemNameWithRarity: React.FC<{ item: Poe2Item }> = ({ item }) => {
+export const ItemNameWithRarity: React.FC<{
+  item: Poe2Item;
+  expanded: boolean;
+  onToggle: () => void;
+}> = ({ item, expanded, onToggle }) => {
   const getRarityColor = (rarity: string = "magic") => {
     switch (rarity.toLowerCase()) {
       case "normal":
@@ -37,11 +42,25 @@ const ItemNameWithRarity: React.FC<{ item: Poe2Item }> = ({ item }) => {
   };
 
   const rarityColor = getRarityColor(item.item?.rarity);
+  const itemName =
+    item.item.name || item.item.typeLine || item.item.baseType || "Item";
 
   return (
-    <h2 className={`font-bold text-xl ${rarityColor} text-left`}>
-      {item.item.name || item.item.typeLine}
-    </h2>
+    <button
+      type="button"
+      aria-expanded={expanded}
+      aria-label={`${expanded ? "Collapse" : "Expand"} ${itemName}`}
+      onClick={onToggle}
+      className="group flex items-center gap-1 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+    >
+      <ChevronDown
+        aria-hidden="true"
+        className={`h-5 w-5 shrink-0 text-gray-400 transition-transform group-hover:text-gray-200 ${expanded ? "" : "-rotate-90"}`}
+      />
+      <h2 className={`font-bold text-xl ${rarityColor} text-left`}>
+        {itemName}
+      </h2>
+    </button>
   );
 };
 
@@ -169,6 +188,7 @@ export function PoeListItem(props: {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isPriceChecking, setIsPriceChecking] = useState(false);
   const [priceCheckError, setPriceCheckError] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(true);
   const gemItem = isGemItem(item);
   const requiredLevel = gemItem ? undefined : getItemRequiredLevel(item);
 
@@ -294,7 +314,11 @@ export function PoeListItem(props: {
       <div className="flex-grow w-full sm:w-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start mb-2">
           <div>
-            <ItemNameWithRarity item={item} />
+            <ItemNameWithRarity
+              item={item}
+              expanded={isExpanded}
+              onToggle={() => setIsExpanded((expanded) => !expanded)}
+            />
             <p className="text-sm text-gray-400 text-left">
               {!item.item.name ? item.item.baseType : item.item.typeLine}
             </p>
@@ -321,11 +345,11 @@ export function PoeListItem(props: {
           </div>
         </div>
 
-        {item.item.corrupted && (
+        {isExpanded && item.item.corrupted && (
           <p className="text-red-500 font-semibold mb-2">Corrupted</p>
         )}
 
-        <div className="space-y-4">
+        <div className={`space-y-4 ${isExpanded ? "" : "hidden"}`}>
           {!gemItem && (
             <div className="bg-gray-700 p-3 rounded-md">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-200">
@@ -500,7 +524,7 @@ export function PoeListItem(props: {
           </div>
         </div>
 
-        {priceEstimate && (
+        {isExpanded && priceEstimate && (
           <details className="bg-gray-700 p-3 rounded-md mb-4 text-left">
             <summary className="cursor-pointer font-semibold text-orange-300">
               {marketIsPrimary && marketValuation
@@ -638,15 +662,15 @@ export function PoeListItem(props: {
           </details>
         )}
 
-        <p className="text-sm text-gray-400 mt-4">
+        <p className={`${isExpanded ? "" : "hidden"} text-sm text-gray-400 mt-4`}>
           Stash: {item.listing.stash.name} (x: {item.listing.stash.x}, y:{" "}
           {item.listing.stash.y})
         </p>
-        {listingSinceLabel && (
+        {isExpanded && listingSinceLabel && (
           <p className="mt-1 text-sm text-gray-400">{listingSinceLabel}</p>
         )}
       </div>
-      <div className="flex flex-col sm:flex-col flex-shrink-0 mt-4 sm:mt-0 sm:ml-4 w-full sm:w-auto gap-4">
+      <div className={`${isExpanded ? "flex" : "hidden"} flex-col sm:flex-col flex-shrink-0 mt-4 sm:mt-0 sm:ml-4 w-full sm:w-auto gap-4`}>
         <button
           onClick={() => props.onRefreshClick?.(item)}
           className={buttonStyle}
