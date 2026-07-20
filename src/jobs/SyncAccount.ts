@@ -1,6 +1,18 @@
 import { Job } from "./Job";
 import { Poe2Trade } from "../services/poe2trade";
-import { PriceChecker } from "../services/PriceEstimator";
+
+const ACCOUNT_ITEM_CATEGORIES = [
+  "weapon",
+  "armour",
+  "accessory",
+  "gem",
+  "jewel",
+  "flask",
+  "map",
+  "card",
+  "sanctum.relic",
+  "currency",
+] as const;
 
 export class SyncAccount extends Job<string[]> {
   constructor(private account: string, private league: string = "Standard") {
@@ -13,101 +25,54 @@ export class SyncAccount extends Job<string[]> {
 
   async *_task() {
     try {
-      let price = 1;
-      const currency = "exalted";
-      let allItems: string[] = [];
-      const cachedItems = Poe2Trade.getCachedAccountItems(
+      const initial = await Poe2Trade.getAccountLiveSearch(
         this.account,
         this.league,
+        { signal: this.signal },
       );
-      let totalNeeded = 0;
-      let previousCursor = "";
+      const totalNeeded = initial.total;
+      let allItems = Poe2Trade.toUniqueItems(initial.result);
 
-      while (true) {
-        const response = await Poe2Trade.getAccountItems(
-          this.account,
-          price,
-          currency,
-          this.league,
-          { signal: this.signal },
-        );
-
-        if (!totalNeeded) {
-          totalNeeded = response.total;
-        }
-
-        if (!response.result.length) {
-          break;
-        }
-
-        const pageItems = response.result.filter(
-          (itemId) => !allItems.includes(itemId),
-        );
-        const [lastItem] = await Poe2Trade.fetchAllItems(
-          this.account,
-          [response.result[response.result.length - 1]],
-          false,
-          this.league,
-          { signal: this.signal },
-        );
-
-        let lastItemPrice = lastItem?.listing.price.amount || price;
-        const lastItemPriceCurrency =
-          lastItem?.listing.price.currency || currency;
-
-        if (lastItemPriceCurrency !== currency) {
-          const exchangeRate = await PriceChecker.avgExchangeRate(
-            currency,
-            lastItemPriceCurrency,
-            this.league,
-            { signal: this.signal },
-          );
-          lastItemPrice = exchangeRate * lastItemPrice;
-        }
-
-        let samePriceItems: string[] = [];
-        if (lastItemPrice == price) {
-          samePriceItems = await Poe2Trade.getAllAccountItemsByItemLevel(
-            this.account,
-            price,
-            currency,
-            this.league,
-            { signal: this.signal },
-          );
-          price++;
-        } else {
-          price = lastItemPrice > price ? lastItemPrice : price * 1.2;
-        }
-
-        allItems = Poe2Trade.toUniqueItems([
-          ...allItems,
-          ...pageItems,
-          ...samePriceItems,
-        ]);
-
-        const cursor = `${price}:${allItems.length}`;
-        if (cursor === previousCursor || (!pageItems.length && !samePriceItems.length)) {
-          throw new Error(
-            `Account sync stalled after finding ${allItems.length} of ${totalNeeded} listings.`,
-          );
-        }
-        previousCursor = cursor;
-
+      if (allItems.length) {
         yield {
           total: totalNeeded,
           current: allItems.length,
           data: allItems,
         };
+      }
 
-        if (totalNeeded > 0 && allItems.length >= totalNeeded) {
+      for (const category of ACCOUNT_ITEM_CATEGORIES) {
+        if (allItems.length >= totalNeeded) {
           break;
+        }
+
+        const response = await Poe2Trade.getAccountItemsByCategory(
+          this.account,
+          category,
+          this.league,
+          { signal: this.signal },
+        );
+        const previousItemCount = allItems.length;
+        allItems = Poe2Trade.toUniqueItems([...allItems, ...response.result]);
+
+        if (allItems.length > previousItemCount) {
+          yield {
+            total: totalNeeded,
+            current: allItems.length,
+            data: allItems,
+          };
         }
       }
 
-      const reconciledItems = totalNeeded === 0 ? [] : allItems;
+      if (allItems.length !== totalNeeded) {
+        throw new Error(
+          `Account sync found ${allItems.length} of ${totalNeeded} listings.`,
+        );
+      }
+
       Poe2Trade.setCachedAccountItems(
         this.account,
-        reconciledItems,
+        allItems,
         this.league,
       );
 
@@ -115,12 +80,11 @@ export class SyncAccount extends Job<string[]> {
         yield {
           total: totalNeeded,
           current: 0,
-          data: reconciledItems,
+          data: allItems,
         };
       }
 
-      void cachedItems;
-      return reconciledItems;
+      return allItems;
     } catch (error: unknown) {
       console.error(error);
       this.error = getSyncErrorMessage(error);

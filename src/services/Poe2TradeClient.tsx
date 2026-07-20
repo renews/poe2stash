@@ -162,6 +162,37 @@ export class Poe2TradeClient {
     return response.data as Poe2TradeSearch;
   }
 
+  async getAccountItemsByCategory(
+    account: string,
+    category: string,
+    league?: string,
+    options: ApiRequestRunOptions = {},
+  ) {
+    const url = `${this.apiUrl}/search/poe2/${league || this.league}`;
+    const response = await this.requests.run(
+      () =>
+        axios.post(
+          url,
+          {
+            query: {
+              filters: {
+                trade_filters: {
+                  filters: { account: { input: account } },
+                },
+                type_filters: {
+                  filters: { category: { option: category } },
+                },
+              },
+            },
+            sort: { indexed: "desc" },
+          },
+          { timeout: this.requestTimeout, signal: options.signal },
+        ),
+      options,
+    );
+    return response.data as Poe2TradeSearch;
+  }
+
   range(min?: number | undefined, max?: number | undefined) {
     const params = {
       ...(min !== undefined && { min }),

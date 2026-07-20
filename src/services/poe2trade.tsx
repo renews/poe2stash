@@ -38,6 +38,20 @@ class Poe2TradeService {
     return this.client.getAccountLiveSearch(account, league, options);
   }
 
+  async getAccountItemsByCategory(
+    account: string,
+    category: string,
+    league?: string,
+    options: ApiRequestRunOptions = {},
+  ) {
+    return this.client.getAccountItemsByCategory(
+      account,
+      category,
+      league,
+      options,
+    );
+  }
+
   async getAllAccountItemsByItemLevel(
     account: string,
     price: number,

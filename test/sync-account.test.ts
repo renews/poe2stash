@@ -3,52 +3,45 @@ import { SyncAccount } from "../src/jobs/SyncAccount";
 import { Poe2Trade } from "../src/services/poe2trade";
 import { Poe2Item } from "../src/services/types";
 
-function createListedItem(id: string, amount: number): Poe2Item {
-  return {
-    id,
-    listing: {
-      price: { amount, currency: "exalted" },
-    },
-    item: { id },
-  } as Poe2Item;
-}
-
-test("sync reconciles every result page and scopes cache writes by league", async () => {
-  const originalGetCached = Poe2Trade.getCachedAccountItems;
+test("sync reconciles category results and scopes cache writes by league", async () => {
+  const originalGetLiveSearch = Poe2Trade.getAccountLiveSearch;
+  const originalGetByCategory = Poe2Trade.getAccountItemsByCategory;
   const originalSetCached = Poe2Trade.setCachedAccountItems;
-  const originalUpsertCached = Poe2Trade.upsertCachedAccountItems;
-  const originalPrune = Poe2Trade.pruneAccountItemsLessThan;
-  const originalGetAccountItems = Poe2Trade.getAccountItems;
-  const originalFetchAllItems = Poe2Trade.fetchAllItems;
-  const originalGetByItemLevel = Poe2Trade.getAllAccountItemsByItemLevel;
   const cacheWrites: Array<{ ids: string[]; league?: string }> = [];
-  const cacheReads: Array<string | undefined> = [];
-  let searchCount = 0;
+  const searchLeagues: Array<string | undefined> = [];
+  const expectedIds = Array.from({ length: 25 }, (_, index) => `item-${index}`);
 
-  Poe2Trade.getCachedAccountItems = ((_account, league?: string) => {
-    cacheReads.push(league);
-    return ["stale-item"];
-  }) as typeof Poe2Trade.getCachedAccountItems;
+  Poe2Trade.getAccountLiveSearch = (async (_account, league) => {
+    searchLeagues.push(league);
+    return {
+      id: "all-account-items",
+      complexity: 0,
+      result: expectedIds.slice(0, 10),
+      total: expectedIds.length,
+    };
+  }) as typeof Poe2Trade.getAccountLiveSearch;
+  Poe2Trade.getAccountItemsByCategory = (async (
+    _account,
+    category,
+    league,
+  ) => {
+    searchLeagues.push(league);
+    const result =
+      category === "weapon"
+        ? expectedIds.slice(10, 20)
+        : category === "armour"
+          ? expectedIds.slice(20)
+          : [];
+    return {
+      id: `category-${category}`,
+      complexity: 0,
+      result,
+      total: result.length,
+    };
+  }) as typeof Poe2Trade.getAccountItemsByCategory;
   Poe2Trade.setCachedAccountItems = ((_account, ids, league?: string) => {
     cacheWrites.push({ ids: [...ids], league });
   }) as typeof Poe2Trade.setCachedAccountItems;
-  Poe2Trade.upsertCachedAccountItems = (() => {}) as typeof Poe2Trade.upsertCachedAccountItems;
-  Poe2Trade.pruneAccountItemsLessThan = (async () => {}) as typeof Poe2Trade.pruneAccountItemsLessThan;
-  Poe2Trade.getAccountItems = (async () => {
-    searchCount += 1;
-    return searchCount <= 25
-      ? {
-          id: `search-${searchCount}`,
-          complexity: 0,
-          result: [`item-${searchCount}`],
-          total: 25,
-        }
-      : { id: "done", complexity: 0, result: [], total: 25 };
-  }) as typeof Poe2Trade.getAccountItems;
-  Poe2Trade.fetchAllItems = (async (_account, ids) => [
-    createListedItem(ids[0], searchCount + 1),
-  ]) as typeof Poe2Trade.fetchAllItems;
-  Poe2Trade.getAllAccountItemsByItemLevel = (async () => []) as typeof Poe2Trade.getAllAccountItemsByItemLevel;
 
   try {
     const sync = new SyncAccount("Account#1234", "HC Runes of Aldur");
@@ -59,20 +52,72 @@ test("sync reconciles every result page and scopes cache writes by league", asyn
     }
 
     expect(finalIds).toHaveLength(25);
-    expect(finalIds).not.toContain("stale-item");
-    expect(cacheReads).toEqual(["HC Runes of Aldur"]);
+    expect(finalIds).toEqual(expectedIds);
+    expect(searchLeagues).toEqual([
+      "HC Runes of Aldur",
+      "HC Runes of Aldur",
+      "HC Runes of Aldur",
+    ]);
     expect(cacheWrites.at(-1)).toEqual({
       ids: finalIds,
       league: "HC Runes of Aldur",
     });
   } finally {
-    Poe2Trade.getCachedAccountItems = originalGetCached;
+    Poe2Trade.getAccountLiveSearch = originalGetLiveSearch;
+    Poe2Trade.getAccountItemsByCategory = originalGetByCategory;
     Poe2Trade.setCachedAccountItems = originalSetCached;
-    Poe2Trade.upsertCachedAccountItems = originalUpsertCached;
-    Poe2Trade.pruneAccountItemsLessThan = originalPrune;
+  }
+});
+
+test("sync reconciles mixed-currency listings without a price cursor", async () => {
+  const originalGetLiveSearch = Poe2Trade.getAccountLiveSearch;
+  const originalGetAccountItems = Poe2Trade.getAccountItems;
+  const originalSetCached = Poe2Trade.setCachedAccountItems;
+  const originalGetByCategory = Poe2Trade.getAccountItemsByCategory;
+  const categoryItems: Record<string, string[]> = {
+    weapon: ["one"],
+    armour: ["two"],
+    gem: ["three"],
+  };
+  const cacheWrites: string[][] = [];
+
+  Poe2Trade.getAccountLiveSearch = (async () => ({
+    id: "all-account-items",
+    complexity: 0,
+    result: ["one"],
+    total: 3,
+  })) as typeof Poe2Trade.getAccountLiveSearch;
+  Poe2Trade.getAccountItems = (async () => {
+    throw new Error("sync must not paginate with a converted price cursor");
+  }) as typeof Poe2Trade.getAccountItems;
+  Poe2Trade.getAccountItemsByCategory = (async (
+    _account,
+    category,
+  ) => ({
+    id: `category-${category}`,
+    complexity: 0,
+    result: categoryItems[category] || [],
+    total: categoryItems[category]?.length || 0,
+  })) as typeof Poe2Trade.getAccountItemsByCategory;
+  Poe2Trade.setCachedAccountItems = ((_account, ids) => {
+    cacheWrites.push([...ids]);
+  }) as typeof Poe2Trade.setCachedAccountItems;
+
+  try {
+    const sync = new SyncAccount("Account#1234", "HC Runes of Aldur");
+    let finalIds: string[] = [];
+
+    for await (const progress of sync._task()) {
+      finalIds = progress.data;
+    }
+
+    expect(finalIds).toEqual(["one", "two", "three"]);
+    expect(cacheWrites.at(-1)).toEqual(finalIds);
+  } finally {
+    Poe2Trade.getAccountLiveSearch = originalGetLiveSearch;
     Poe2Trade.getAccountItems = originalGetAccountItems;
-    Poe2Trade.fetchAllItems = originalFetchAllItems;
-    Poe2Trade.getAllAccountItemsByItemLevel = originalGetByItemLevel;
+    Poe2Trade.getAccountItemsByCategory = originalGetByCategory;
+    Poe2Trade.setCachedAccountItems = originalSetCached;
   }
 });
 
