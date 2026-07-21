@@ -3,11 +3,14 @@ import { Leagues } from "../src/data/leagues";
 import {
   parseSavedLeague,
   parseSavedModifierRange,
+  parseSavedOpenMarketInspectorOnSelect,
   parseSavedPriceCheckCooldown,
 } from "../src/contexts/AppContext";
 import {
   canStartAccountSync,
   canViewSaleHistory,
+  getAccountStatusLabel,
+  hasConfiguredAccount,
   shouldOpenConfiguration,
 } from "../src/appNavigation";
 
@@ -36,6 +39,22 @@ test("defaults a missing price-check cooldown without overriding an explicit zer
   expect(parseSavedPriceCheckCooldown("15")).toBe(15);
 });
 
+test("opens the market inspector on item selection by default", () => {
+  expect(parseSavedOpenMarketInspectorOnSelect(null)).toBe(true);
+  expect(parseSavedOpenMarketInspectorOnSelect("true")).toBe(true);
+  expect(parseSavedOpenMarketInspectorOnSelect("false")).toBe(false);
+  expect(parseSavedOpenMarketInspectorOnSelect("invalid")).toBe(true);
+});
+
+test("exposes the market inspector behavior in configuration", async () => {
+  const source = await Bun.file(
+    `${import.meta.dir}/../src/components/ConfigurationPage.tsx`,
+  ).text();
+
+  expect(source).toContain("Open Market Inspector when selecting an item");
+  expect(source).toContain("setOpenMarketInspectorOnSelect");
+});
+
 test("opens configuration when no account is configured", () => {
   expect(shouldOpenConfiguration("/", "")).toBe(true);
   expect(shouldOpenConfiguration("/", "BoostCoder#0407")).toBe(false);
@@ -52,4 +71,11 @@ test("only allows sale history for a configured account", () => {
   expect(canViewSaleHistory("")).toBe(false);
   expect(canViewSaleHistory("   ")).toBe(false);
   expect(canViewSaleHistory("BoostCoder#0407")).toBe(true);
+});
+
+test("describes account readiness without claiming a network connection", () => {
+  expect(hasConfiguredAccount("   ")).toBe(false);
+  expect(hasConfiguredAccount("BoostCoder#0407")).toBe(true);
+  expect(getAccountStatusLabel("")).toBe("Setup required");
+  expect(getAccountStatusLabel("BoostCoder#0407")).toBe("Account ready");
 });

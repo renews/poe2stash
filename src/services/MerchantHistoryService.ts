@@ -27,33 +27,33 @@ export class MerchantHistoryError extends Error {
 }
 
 export class MerchantHistoryService {
-  private async invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
-    if (typeof window === "undefined" || !window.ipcRenderer) {
+  private getDesktopApi() {
+    if (typeof window === "undefined" || !window.desktopApi?.merchantHistory) {
       throw new MerchantHistoryError(
         "Merchant History is only available in the desktop app.",
       );
     }
 
-    return (await window.ipcRenderer.invoke(channel, ...args)) as T;
+    return window.desktopApi.merchantHistory;
   }
 
   getSession() {
-    return this.invoke<MerchantHistorySession>("poe-get-session");
+    return this.getDesktopApi().getSession() as Promise<MerchantHistorySession>;
   }
 
   login() {
-    return this.invoke<MerchantHistorySession>("poe-login");
+    return this.getDesktopApi().login() as Promise<MerchantHistorySession>;
   }
 
   async fetchHistory(league: string): Promise<MerchantHistoryEntry[]> {
-    const response = await this.invoke<MerchantHistoryResponse>(
-      "poe-fetch-history",
+    const response = (await this.getDesktopApi().fetchHistory(
       league,
-    );
+    )) as MerchantHistoryResponse;
 
     if (!response.ok) {
       throw new MerchantHistoryError(
-        response.error || `Unable to fetch merchant history (HTTP ${response.status}).`,
+        response.error ||
+          `Unable to fetch merchant history (HTTP ${response.status}).`,
         response.status,
       );
     }

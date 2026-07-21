@@ -8,7 +8,7 @@ export class RefreshAllItems extends Job<Poe2Item[]> {
     private filteredItems: Poe2Item[],
     private league: string,
   ) {
-    super("refresh-items", "Refreshing Items", "Refeshing items listed...");
+    super("refresh-items", "Refreshing Items", "Refreshing your sales...");
   }
 
   async *_task() {

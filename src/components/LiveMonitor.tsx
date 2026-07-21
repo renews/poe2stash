@@ -1,17 +1,25 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Poe2Item, Price } from "../services/types";
+import { formatPriceAmount, Poe2Item, Price } from "../services/types";
 import { Estimate, PriceChecker } from "../services/PriceEstimator";
+import {
+  LiveMonitorButton,
+  type LiveMonitorStatus,
+} from "./LiveMonitorButton";
 
 interface LiveMonitorProps {
   items: Poe2Item[];
   priceSuggestions: Record<string, Estimate>;
   league: string;
+  status: LiveMonitorStatus;
+  onToggle: () => void;
 }
 
 const LiveMonitor: React.FC<LiveMonitorProps> = ({
   items,
   priceSuggestions,
   league,
+  status,
+  onToggle,
 }) => {
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("00:00:00");
@@ -22,13 +30,15 @@ const LiveMonitor: React.FC<LiveMonitorProps> = ({
     Price | undefined
   >();
 
-  const [currencyPerHour, setCurrencyPerHour] = useState<{
-    listedPerHour: string;
-    suggestedPerHour: string;
-  }>({ listedPerHour: "0.00 exalted", suggestedPerHour: "0.00 exalted" });
+  const [listedValuePerHour, setListedValuePerHour] =
+    useState("0.00 exalted");
 
   useEffect(() => {
-    console.log("Starting timer");
+    if (status !== "watching") {
+      setStartTime(null);
+      setElapsedTime("00:00:00");
+      return;
+    }
 
     const currentTime = new Date();
     setStartTime(currentTime);
@@ -49,11 +59,9 @@ const LiveMonitor: React.FC<LiveMonitorProps> = ({
     }, 1000);
 
     return () => {
-      console.log("Clearing timer");
-
       clearInterval(timer);
     };
-  }, []);
+  }, [status]);
 
   const calculateTotalValue = useCallback(async (items: Poe2Item[]) => {
     const currency = "exalted";
@@ -118,72 +126,83 @@ const LiveMonitor: React.FC<LiveMonitorProps> = ({
   ]);
 
   useEffect(() => {
-    const calculateCurrencyPerHour = () => {
+    let cancelled = false;
+
+    const calculateCurrencyPerHour = async () => {
       const zeroValue = "0.00 exalted";
-      if (!startTime) {
-        return { listedPerHour: zeroValue, suggestedPerHour: zeroValue };
+      if (status !== "watching" || !startTime) {
+        if (!cancelled) {
+          setListedValuePerHour(zeroValue);
+        }
+        return zeroValue;
       }
 
       const listedPerHour = totalListingValue
-        ? (
-            totalListingValue.amount /
-            ((new Date().getTime() - startTime.getTime()) / 3600000)
-          ).toFixed(2) + ` ${totalListingValue.currency}`
+        ? await PriceChecker.upscalePricePerHour(
+            totalListingValue,
+            Date.now() - startTime.getTime(),
+            league,
+          )
         : zeroValue;
+      const listedPerHourLabel =
+        typeof listedPerHour === "string"
+          ? listedPerHour
+          : `${formatPriceAmount(listedPerHour.amount)} ${listedPerHour.currency}`;
 
-      const suggestedPerHour = totalSuggestedValue
-        ? (
-            totalSuggestedValue?.amount /
-            ((new Date().getTime() - startTime.getTime()) / 3600000)
-          ).toFixed(2) + ` ${totalSuggestedValue?.currency}`
-        : zeroValue;
+      if (!cancelled) {
+        setListedValuePerHour(listedPerHourLabel);
+      }
 
-      setCurrencyPerHour({ listedPerHour, suggestedPerHour });
-
-      return { listedPerHour, suggestedPerHour };
+      return listedPerHourLabel;
     };
 
-    calculateCurrencyPerHour();
-  }, [elapsedTime, totalListingValue, totalSuggestedValue, startTime]);
+    void calculateCurrencyPerHour();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [elapsedTime, league, status, totalListingValue, startTime]);
 
   const numDrops = items.length;
+  const listingValue = totalListingValue
+    ? `${totalListingValue.amount.toFixed(2)} ${totalListingValue.currency}`
+    : "0.00 exalted";
+  const suggestedValue = totalSuggestedValue
+    ? `${totalSuggestedValue.amount.toFixed(2)} ${totalSuggestedValue.currency}`
+    : "0.00 exalted";
 
   return (
-    <div className="bg-gray-700 p-6 rounded-lg shadow-lg mb-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-gray-400">Number of drops:</p>
-          <p className="text-xl font-semibold text-white">{numDrops}</p>
-        </div>
-        {totalListingValue && (
-          <div>
-            <p className="text-gray-400">Total listing value:</p>
-            <p className="text-xl font-semibold text-white">
-              {totalListingValue.amount.toFixed(2)} {totalListingValue.currency}
-            </p>
-          </div>
-        )}
-
-        {totalSuggestedValue && (
-          <div>
-            <p className="text-gray-400">Total suggested value:</p>
-            <p className="text-xl font-semibold text-white">
-              {totalSuggestedValue.amount.toFixed(2)}{" "}
-              {totalSuggestedValue.currency}
-            </p>
-          </div>
-        )}
-        <div>
-          <p className="text-gray-400">Currency per hour:</p>
-          <p className="text-xl font-semibold text-white">
-            listed: {currencyPerHour.listedPerHour}/hr
-          </p>
-          <p className="text-xl font-semibold text-white">
-            suggested: {currencyPerHour.suggestedPerHour}/hr
-          </p>
-        </div>
+    <footer
+      className="live-metrics surface-card"
+      aria-label="Live monitor"
+      data-monitor-status={status}
+    >
+      <header className="live-metrics__header">
+        <LiveMonitorButton status={status} onToggle={onToggle} />
+      </header>
+      <div
+        className="live-metrics__grid"
+        role="group"
+        aria-label="Live sales summary"
+      >
+        <article className="metric-tile">
+          <p>New items</p>
+          <strong>{numDrops}</strong>
+        </article>
+        <article className="metric-tile">
+          <p>Listed value</p>
+          <strong>{listingValue}</strong>
+        </article>
+        <article className="metric-tile">
+          <p>Suggested value</p>
+          <strong>{suggestedValue}</strong>
+        </article>
+        <article className="metric-tile metric-tile--wide">
+          <p>Listed per hour</p>
+          <strong>{listedValuePerHour}/hr</strong>
+        </article>
       </div>
-    </div>
+    </footer>
   );
 };
 

@@ -1,27 +1,23 @@
 import React from "react";
+import { RefreshCw, Search, Sparkles } from "lucide-react";
 import { useAppContext } from "../contexts/AppContext";
-import { PoeListItem } from "./PoeListItem";
-import { LiveMonitorButton } from "./LiveMonitorButton";
-import LiveMonitor from "./LiveMonitor";
+import { LiveMonitorAlert } from "./LiveMonitorButton";
 import { JobQueue } from "./JobQueue";
-import { formFieldClassName, successButtonClassName } from "./formStyles";
+import {
+  formFieldClassName,
+  primaryButtonClassName,
+  secondaryButtonClassName,
+} from "./formStyles";
 import {
   getPublicListingStashCounts,
   getPublicListingStashLabel,
 } from "../services/stashScope";
-import {
-  CompactItemList,
-  ItemViewMode,
-  ItemViewToggle,
-} from "./CompactItemList";
+import { TradeWorkspace } from "./TradeWorkspace";
 
 const MainPage: React.FC = () => {
-  const [itemView, setItemView] = React.useState<ItemViewMode>("compact");
   const {
-    accountName,
-    selectedLeague,
     items,
-    liveSearchItems,
+    selectedLeague,
     stashTabs,
     selectedStash,
     searchTerm,
@@ -34,6 +30,7 @@ const MainPage: React.FC = () => {
     priceEstimates,
     modifierSelections,
     setModifierSelection,
+    openMarketInspectorOnSelect,
     errorMessage,
     setErrorMessage,
     jobs,
@@ -41,77 +38,112 @@ const MainPage: React.FC = () => {
     filterByStash,
     priceCheckItem,
     priceCheckItems,
-    modifierRangePercent,
-    refreshItem,
     refreshAllItems,
     priceCheckAllItems,
     filteredItems,
   } = useAppContext();
   const stashCounts = getPublicListingStashCounts(items);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
+  const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
   };
 
   return (
-    <div className="w-full p-4 pt-16">
-      <h1 className="text-2xl font-bold mb-4 mt-8">Welcome to Poe2Stash</h1>
+    <div className="page-shell trade-dashboard-page">
+      {items.length > 0 && (
+        <section className="listing-command-bar" aria-label="Sales controls">
+          <label className="command-field command-field--stash" htmlFor="stash-select">
+            <span className="command-field__label">Stash tab</span>
+            <span className="command-field__control">
+              <select
+                className={formFieldClassName}
+                id="stash-select"
+                value={selectedStash}
+                onChange={(event) => filterByStash(event.target.value)}
+              >
+                {stashTabs.map((stash) => (
+                  <option key={stash} value={stash}>
+                    {getPublicListingStashLabel(stash, stashCounts)}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
+          <label className="command-field command-field--search" htmlFor="item-search">
+            <span className="command-field__label">Search items</span>
+            <span className="command-field__control command-search">
+              <Search aria-hidden="true" />
+              <input
+                id="item-search"
+                type="search"
+                value={searchTerm}
+                onChange={handleSearch}
+                placeholder="Search items, bases, or modifiers"
+                className={formFieldClassName}
+              />
+            </span>
+          </label>
+          <button
+            type="button"
+            onClick={refreshAllItems}
+            className={`${secondaryButtonClassName} command-icon-button`}
+            aria-label="Refresh your sales"
+            title="Refresh your sales"
+          >
+            <RefreshCw aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={priceCheckAllItems}
+            disabled={isPriceChecking}
+            className={`${primaryButtonClassName} price-all-button`}
+          >
+            <Sparkles aria-hidden="true" />
+            {isPriceChecking ? "Checking prices" : "Price all"}
+          </button>
+        </section>
+      )}
 
-      {accountName && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-gray-700 bg-gray-800 p-3">
-          <LiveMonitorButton
-            isLiveMonitoring={isLiveMonitoring}
-            isStarting={isLiveMonitorStarting}
-            error={liveMonitorError}
-            onToggle={toggleLiveMonitoring}
-          />
-          <p className="text-sm text-gray-300">
-            Watches for newly published listings and checks their prices in the
-            background. Fairly priced items stay silent.
-          </p>
+      {liveMonitorError && (
+        <LiveMonitorAlert
+          error={liveMonitorError}
+          canReconnect={!isLiveMonitoring}
+          isReconnecting={isLiveMonitorStarting}
+          onReconnect={toggleLiveMonitoring}
+        />
+      )}
+
+      {errorMessage && (
+        <div role="alert" className="feedback feedback--error">
+          {errorMessage}
         </div>
       )}
 
-      {items.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-4">
-          <label htmlFor="stash-select" className="mr-2">
-            Public listing stash tab:
-          </label>
-          <select
-            className={`${formFieldClassName} min-w-48`}
-            id="stash-select"
-            value={selectedStash}
-            onChange={(e) => filterByStash(e.target.value)}
-          >
-            {stashTabs.map((stash) => (
-              <option key={stash} value={stash} className="bg-gray-600">
-                {getPublicListingStashLabel(stash, stashCounts)}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={handleSearch}
-            placeholder="Search items..."
-            className={`${formFieldClassName} min-w-48`}
-          />
-          <button onClick={refreshAllItems} className={successButtonClassName}>
-            Refresh All
-          </button>
-
-          <button
-            onClick={priceCheckAllItems}
-            disabled={isPriceChecking}
-            className={successButtonClassName}
-          >
-            {isPriceChecking ? "Checking Prices..." : "Price Check All"}
-          </button>
-          <ItemViewToggle value={itemView} onChange={setItemView} />
-          <div className="flex-grow text-right">
-            {filteredItems.length} items found
-          </div>
-        </div>
+      {items.length === 0 && jobs.length === 0 && !isLiveMonitoring ? (
+        <section className="empty-ledger" aria-labelledby="empty-ledger-title">
+          <p className="trade-kicker">Ledger ready</p>
+          <h2 id="empty-ledger-title">Your sales will appear here</h2>
+          <p>
+            Sync your trade account to load your sales, pricing signals, and
+            sale-age details.
+          </p>
+        </section>
+      ) : (
+        <TradeWorkspace
+          items={filteredItems}
+          allItems={items}
+          stashTabs={stashTabs}
+          selectedStash={selectedStash}
+          priceEstimates={priceEstimates}
+          modifierSelections={modifierSelections}
+          league={selectedLeague}
+          openMarketInspectorOnSelect={openMarketInspectorOnSelect}
+          onStashSelect={filterByStash}
+          onPriceCheck={priceCheckItem}
+          onModifierSelectionChange={setModifierSelection}
+          onStashPriceCheck={priceCheckItems}
+          isPriceChecking={isPriceChecking}
+        />
       )}
 
       {jobs.length > 0 && (
@@ -120,45 +152,6 @@ const MainPage: React.FC = () => {
           setJobs={setJobs}
           setErrorMessage={setErrorMessage}
         />
-      )}
-
-      {isLiveMonitoring && (
-        <LiveMonitor
-          items={liveSearchItems}
-          priceSuggestions={priceEstimates}
-          league={selectedLeague}
-        />
-      )}
-
-      {errorMessage && <div className="text-red-500 mb-4">{errorMessage}</div>}
-
-      {itemView === "compact" ? (
-        <CompactItemList
-          items={filteredItems}
-          priceEstimates={priceEstimates}
-          modifierSelections={modifierSelections}
-          onPriceCheck={priceCheckItem}
-          onModifierSelectionChange={setModifierSelection}
-          onStashPriceCheck={priceCheckItems}
-          isPriceChecking={isPriceChecking}
-        />
-      ) : (
-        filteredItems.map((item) => (
-          <PoeListItem
-            key={item.id}
-            item={item}
-            league={selectedLeague}
-            onPriceClick={priceCheckItem}
-            modifierRangePercent={modifierRangePercent}
-            onRefreshClick={refreshItem}
-            modifierSelection={modifierSelections[item.id]}
-            onModifierSelectionChange={(selection) =>
-              setModifierSelection(item.id, selection)
-            }
-            priceSuggestion={priceEstimates[item.id]?.price}
-            priceEstimate={priceEstimates[item.id]}
-          />
-        ))
       )}
     </div>
   );

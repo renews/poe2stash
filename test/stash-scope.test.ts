@@ -31,11 +31,11 @@ test("counts publicly listed items by stash tab", () => {
   });
 });
 
-test("labels the all-items option as public and includes tab counts", () => {
+test("labels the all-items option as sales and includes tab counts", () => {
   const counts = { All: 3, "Shop A": 2 };
 
   expect(getPublicListingStashLabel("All", counts)).toBe(
-    "All publicly listed items (3)",
+    "All sales (3)",
   );
   expect(getPublicListingStashLabel("Shop A", counts)).toBe("Shop A (2)");
 });

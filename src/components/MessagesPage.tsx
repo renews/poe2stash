@@ -24,7 +24,7 @@ export const ChatMonitorExplanation: React.FC = () => (
   >
     <p>
       Chat Monitor watches the selected Path of Exile 2 Client.txt log for
-      incoming buyer whispers about your publicly listed items.
+      incoming buyer whispers about items in Your Sales.
     </p>
     <ul className="mt-2 list-disc space-y-1 pl-5 text-blue-200">
       <li>
@@ -34,7 +34,7 @@ export const ChatMonitorExplanation: React.FC = () => (
       </li>
       <li>
         Active Only hides messages for items that are no longer present in the
-        current synced listings.
+        current synced sales.
       </li>
       <li>
         It does not confirm completed sales. Use Sale History for completed

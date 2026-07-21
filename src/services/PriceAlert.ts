@@ -23,7 +23,9 @@ type PriceAlertDependencies = {
 };
 
 function getItemName(item: Poe2Item) {
-  return item.item?.name || item.item?.typeLine || item.item?.baseType || "Item";
+  return (
+    item.item?.name || item.item?.typeLine || item.item?.baseType || "Item"
+  );
 }
 
 function capitalize(value: string) {
@@ -56,12 +58,12 @@ const defaultDependencies: PriceAlertDependencies = {
   dispatch: async (payload) => {
     if (
       typeof window === "undefined" ||
-      typeof window.ipcRenderer?.invoke !== "function"
+      typeof window.desktopApi?.showPriceAlert !== "function"
     ) {
       return false;
     }
 
-    return Boolean(await window.ipcRenderer.invoke("show-price-alert", payload));
+    return Boolean(await window.desktopApi.showPriceAlert(payload));
   },
 };
 

@@ -52,6 +52,6 @@ export function getPublicListingStashLabel(
 ) {
   const count = counts[stashName] || 0;
   return stashName === "All"
-    ? `All publicly listed items (${count})`
+    ? `All sales (${count})`
     : `${stashName} (${count})`;
 }

@@ -1372,6 +1372,35 @@ test("promotes suggested prices while retaining the lower denomination", async (
   }
 });
 
+test("promotes each derived range value independently", async () => {
+  const originalExchangeRate = PriceChecker.exchangeRate;
+  PriceChecker.exchangeRate = async (iWant, iHave) => {
+    if (iWant === "exalted" && iHave === "chaos") return 75;
+    if (iWant === "chaos" && iHave === "divine") return 6;
+    if (iWant === "divine" && iHave === "mirror") return 100;
+    return 1;
+  };
+
+  try {
+    await expect(
+      PriceChecker.upscalePrices(
+        [
+          { amount: 20, currency: "exalted" },
+          { amount: 144, currency: "exalted" },
+          { amount: 450, currency: "exalted" },
+        ],
+        "Standard",
+      ),
+    ).resolves.toMatchObject([
+      { amount: 20, currency: "exalted" },
+      { amount: 2, currency: "chaos" },
+      { amount: 1, currency: "divine" },
+    ]);
+  } finally {
+    PriceChecker.exchangeRate = originalExchangeRate;
+  }
+});
+
 test("keeps a converted chaos price when the higher-tier rate is unavailable", async () => {
   const originalExchangeRate = PriceChecker.exchangeRate;
   PriceChecker.exchangeRate = async (iWant, iHave) => {

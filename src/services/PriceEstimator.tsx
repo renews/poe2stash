@@ -1147,6 +1147,43 @@ class PriceEstimator {
     return price;
   }
 
+  async upscalePrices(
+    prices: Price[],
+    league?: string,
+    options: ApiRequestRunOptions = {},
+  ) {
+    const upscaledPrices: Price[] = [];
+
+    for (const price of prices) {
+      upscaledPrices.push(await this.upscalePrice(price, league, options));
+    }
+
+    return upscaledPrices;
+  }
+
+  async upscalePricePerHour(
+    total: Price,
+    elapsedMilliseconds: number,
+    league?: string,
+    options: ApiRequestRunOptions = {},
+  ) {
+    const preciseTotal = getPrecisePrice(total);
+    const elapsedHours = elapsedMilliseconds / 3_600_000;
+
+    if (!Number.isFinite(elapsedHours) || elapsedHours <= 0) {
+      return { amount: 0, currency: preciseTotal.currency };
+    }
+
+    return this.upscalePrice(
+      {
+        amount: preciseTotal.amount / elapsedHours,
+        currency: preciseTotal.currency,
+      },
+      league,
+      options,
+    );
+  }
+
   async promoteDivineToMirror(
     price: Price,
     league?: string,

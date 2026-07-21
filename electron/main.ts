@@ -5,6 +5,8 @@ import {
   nativeTheme,
   Notification,
   shell,
+  type IpcMainInvokeEvent,
+  type WebContents,
 } from "electron";
 //import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -23,9 +25,14 @@ import { getRendererUrl } from "./app/renderer";
 import {
   getAllowedRendererOrigins,
   isAllowedRendererOrigin,
+  isTrustedRendererUrl,
   LOCAL_SERVER_HOST,
 } from "./app/proxySecurity";
 import { parsePriceAlertPayload } from "./app/priceAlert";
+import {
+  isWindowControlAction,
+  performWindowControl,
+} from "./app/windowControls";
 
 const PORT = process.env.PORT || 7555;
 const execFileAsync = promisify(execFile);
@@ -61,7 +68,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST;
 
 let win: BrowserWindow | null;
-let focusPending = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 async function openExternalUrl(url: string) {
@@ -74,19 +80,43 @@ async function openExternalUrl(url: string) {
 }
 
 function createWindow() {
-  win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+  const createdWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1180,
+    minHeight: 720,
+    frame: false,
+    show: false,
+    backgroundColor: "#121212",
+    icon: path.join(process.env.VITE_PUBLIC, "poe-dash-icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
     },
   });
+  win = createdWindow;
 
-  if (focusPending) {
-    focusPending = false;
-    focusMainWindow();
+  createdWindow.setTitle("Poe Dash");
+  createdWindow.once("ready-to-show", () => createdWindow.show());
+  createdWindow.on("maximize", () =>
+    createdWindow.webContents.send("window-maximized-change", true),
+  );
+  createdWindow.on("unmaximize", () =>
+    createdWindow.webContents.send("window-maximized-change", false),
+  );
+  createdWindow.on("closed", () => {
+    if (win === createdWindow) {
+      win = null;
+    }
+  });
+
+  if (process.platform === "darwin") {
+    app.dock?.setIcon(path.join(process.env.VITE_PUBLIC, "poe-dash-icon.png"));
   }
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  createdWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) {
       void openExternalUrl(url).catch((error) =>
         console.error("Unable to open external URL", error),
@@ -96,29 +126,50 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  // Test active push message to Renderer-process.
-  win.webContents.on("did-finish-load", () => {
-    win?.webContents.send("main-process-message", new Date().toLocaleString());
+  createdWindow.webContents.on("will-navigate", (event, url) => {
+    if (!isTrustedRendererUrl(url, allowedRendererOrigins)) {
+      event.preventDefault();
+    }
   });
 
-  if (process.env.NODE_ENV === "development") {
-    win.webContents.openDevTools();
+  if (process.env.POE_DASH_OPEN_DEVTOOLS === "1") {
+    createdWindow.webContents.openDevTools();
   }
 
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
+    void createdWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
     console.log("RENDERER_DIST", { RENDERER_DIST });
-    void win.loadURL(getRendererUrl(PORT));
+    void createdWindow.loadURL(getRendererUrl(PORT));
+  }
+}
+
+function getControlledWindow(sender: WebContents) {
+  const senderWindow = BrowserWindow.fromWebContents(sender);
+  return senderWindow && senderWindow === win ? senderWindow : null;
+}
+
+function requireTrustedIpcSender(event: IpcMainInvokeEvent) {
+  const frame = event.senderFrame;
+  if (
+    !frame ||
+    frame !== event.sender.mainFrame ||
+    !isTrustedRendererUrl(frame.url, allowedRendererOrigins)
+  ) {
+    throw new Error("Blocked untrusted IPC sender");
   }
 }
 
 function focusMainWindow() {
-  const mainWindow = win ?? BrowserWindow.getAllWindows()[0];
+  const mainWindow =
+    win && !win.isDestroyed()
+      ? win
+      : BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
   if (!mainWindow) {
     return false;
   }
 
+  win = mainWindow;
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
@@ -138,9 +189,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (!focusMainWindow()) {
     createWindow();
   }
 });
@@ -148,7 +197,7 @@ app.on("activate", () => {
 if (hasSingleInstanceLock) {
   app.on("second-instance", () => {
     if (!focusMainWindow()) {
-      focusPending = true;
+      createWindow();
     }
   });
 }
@@ -176,15 +225,23 @@ expressApp.use(express.static(RENDERER_DIST));
 const server = http.createServer(expressApp);
 const wss = new WebSocketServer({ server });
 
-ipcMain.handle("open-external-url", async (_event, url: unknown) => {
-  if (!isAllowedExternalUrl(url)) {
-    throw new Error("Blocked external URL");
+ipcMain.handle("window-control", (event, action: unknown) => {
+  requireTrustedIpcSender(event);
+  const target = getControlledWindow(event.sender);
+  if (!target || !isWindowControlAction(action)) {
+    throw new Error("Invalid window control request");
   }
 
-  await openExternalUrl(url);
+  return performWindowControl(target, action);
 });
 
-ipcMain.handle("show-price-alert", (_event, value: unknown) => {
+ipcMain.handle("window-is-maximized", (event) => {
+  requireTrustedIpcSender(event);
+  return Boolean(getControlledWindow(event.sender)?.isMaximized());
+});
+
+ipcMain.handle("show-price-alert", (event, value: unknown) => {
+  requireTrustedIpcSender(event);
   const payload = parsePriceAlertPayload(value);
   if (!payload) {
     throw new Error("Invalid price alert payload");
@@ -202,18 +259,24 @@ ipcMain.handle("show-price-alert", (_event, value: unknown) => {
   return true;
 });
 
-ipcMain.handle("poe-get-session", () => merchantHistoryService.getSession());
-ipcMain.handle("poe-login", () => merchantHistoryService.login());
-ipcMain.handle("poe-fetch-history", (_event, league: unknown) =>
-  merchantHistoryService.fetchHistory(typeof league === "string" ? league : ""),
-);
+ipcMain.handle("poe-get-session", (event) => {
+  requireTrustedIpcSender(event);
+  return merchantHistoryService.getSession();
+});
+ipcMain.handle("poe-login", (event) => {
+  requireTrustedIpcSender(event);
+  return merchantHistoryService.login();
+});
+ipcMain.handle("poe-fetch-history", (event, league: unknown) => {
+  requireTrustedIpcSender(event);
+  return merchantHistoryService.fetchHistory(
+    typeof league === "string" ? league : "",
+  );
+});
 
 wss.on("connection", (ws, request) => {
   if (
-    !isAllowedRendererOrigin(
-      request.headers.origin,
-      allowedRendererOrigins,
-    )
+    !isAllowedRendererOrigin(request.headers.origin, allowedRendererOrigins)
   ) {
     ws.close(1008, "Blocked origin");
     return;

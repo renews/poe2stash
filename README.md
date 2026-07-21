@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Path of Exile 2 Trade Assistant Icon" width="200">
+  <img src="src/assets/poe-dash-brand-seal.png" alt="Poe Dash compass seal" width="200">
 </p>
 
 
-# POE2Stash
-Analyze your stash tabs in poe2. Price checks and live monitoring of dump tabs
+# Poe Dash
+Analyze your Path of Exile 2 stash tabs with price checks and live monitoring.
 This project is in active development, and I intend to build out some more community oriented features in the future.
 
 ## Releases
@@ -69,8 +69,8 @@ Show item details of purchase offers if you have them in the item database
 ## Devs Getting Started
 
 1. Clone the repository
-2. Install dependencies with `npm install`
-3. Run the application with `npm run dev`
+2. Install dependencies with `bun install`
+3. Run the application with `bun run dev`
 4. Enter your Path of Exile 2 account name to begin syncing your items
 
 ## Contributing

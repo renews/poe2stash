@@ -15,13 +15,27 @@ declare namespace NodeJS {
      * │
      * ```
      */
-    APP_ROOT: string
+    APP_ROOT: string;
     /** /dist/ or /public/ */
-    VITE_PUBLIC: string
+    VITE_PUBLIC: string;
   }
 }
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
-  ipcRenderer: import('electron').IpcRenderer
+  desktopApi?: {
+    merchantHistory: {
+      getSession: () => Promise<unknown>;
+      login: () => Promise<unknown>;
+      fetchHistory: (league: string) => Promise<unknown>;
+    };
+    showPriceAlert: (payload: unknown) => Promise<boolean>;
+  };
+  windowControls: {
+    perform: (
+      action: "minimize" | "toggle-maximize" | "close",
+    ) => Promise<boolean>;
+    isMaximized: () => Promise<boolean>;
+    onMaximizedChange: (callback: (isMaximized: boolean) => void) => () => void;
+  };
 }

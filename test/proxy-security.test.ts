@@ -3,6 +3,7 @@ import {
   isAllowedProxyHost,
   isAllowedRendererOrigin,
   isPathOfExileHost,
+  isTrustedRendererUrl,
   LOCAL_SERVER_HOST,
   redactHeaders,
   sanitizeProxyRequestHeaders,
@@ -42,15 +43,28 @@ test("redacts credentials before headers can be logged", () => {
 test("restricts the app server to loopback renderer origins", () => {
   expect(LOCAL_SERVER_HOST).toBe("127.0.0.1");
   expect(
-    isAllowedRendererOrigin("http://localhost:7555", [
-      "http://localhost:7555",
-    ]),
+    isAllowedRendererOrigin("http://localhost:7555", ["http://localhost:7555"]),
   ).toBe(true);
   expect(
     isAllowedRendererOrigin("https://malicious.example", [
       "http://localhost:7555",
     ]),
   ).toBe(false);
+});
+
+test("trusts IPC only from an exact renderer origin", () => {
+  const allowedOrigins = ["http://localhost:7555"];
+
+  expect(isTrustedRendererUrl("http://localhost:7555/#/", allowedOrigins)).toBe(
+    true,
+  );
+  expect(
+    isTrustedRendererUrl("http://localhost:7555.evil.test", allowedOrigins),
+  ).toBe(false);
+  expect(
+    isTrustedRendererUrl("https://malicious.example", allowedOrigins),
+  ).toBe(false);
+  expect(isTrustedRendererUrl("not-a-url", allowedOrigins)).toBe(false);
 });
 
 test("does not forward renderer credentials to upstream hosts", () => {

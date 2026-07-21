@@ -33,6 +33,8 @@ import { sortStashTabNames } from "../services/stashScope";
 export const MODIFIER_SELECTIONS_STORAGE_KEY = "modifierSelections";
 export const SELECTED_LEAGUE_STORAGE_KEY = "selectedLeague";
 export const MODIFIER_RANGE_PERCENT_STORAGE_KEY = "modifierRangePercent";
+export const OPEN_MARKET_INSPECTOR_ON_SELECT_STORAGE_KEY =
+  "openMarketInspectorOnSelect";
 
 export function parseSavedLeague(value: string | null): League {
   return Leagues.includes(value as League) ? (value as League) : Leagues[0];
@@ -55,6 +57,10 @@ export function parseSavedPriceCheckCooldown(value: string | null) {
   return Number.isFinite(saved) && saved >= 0
     ? saved
     : DEFAULT_PRICE_CHECK_COOLDOWN_MINUTES;
+}
+
+export function parseSavedOpenMarketInspectorOnSelect(value: string | null) {
+  return value !== "false";
 }
 
 export function parseSavedAccountName(value: string | null) {
@@ -161,6 +167,8 @@ interface AppContextType {
   setPriceCheckCooldownMinutes: Dispatch<SetStateAction<number>>;
   modifierRangePercent: number;
   setModifierRangePercent: Dispatch<SetStateAction<number>>;
+  openMarketInspectorOnSelect: boolean;
+  setOpenMarketInspectorOnSelect: Dispatch<SetStateAction<boolean>>;
   currencyRates: CurrencyRates;
   currencyRatesUpdatedAt: number | null;
   isRefreshingCurrencyRates: boolean;
@@ -200,6 +208,16 @@ function getSavedModifierRange() {
 
   return parseSavedModifierRange(
     localStorage.getItem(MODIFIER_RANGE_PERCENT_STORAGE_KEY),
+  );
+}
+
+function getSavedOpenMarketInspectorOnSelect() {
+  if (typeof localStorage === "undefined") {
+    return true;
+  }
+
+  return parseSavedOpenMarketInspectorOnSelect(
+    localStorage.getItem(OPEN_MARKET_INSPECTOR_ON_SELECT_STORAGE_KEY),
   );
 }
 
@@ -248,6 +266,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
   const [modifierRangePercent, setModifierRangePercent] = useState(
     getSavedModifierRange,
   );
+  const [openMarketInspectorOnSelect, setOpenMarketInspectorOnSelect] =
+    useState(getSavedOpenMarketInspectorOnSelect);
   const [priceEstimates, setPriceEstimates] = useState<
     Record<string, Estimate>
   >({});
@@ -547,6 +567,13 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [modifierRangePercent]);
 
   useEffect(() => {
+    localStorage.setItem(
+      OPEN_MARKET_INSPECTOR_ON_SELECT_STORAGE_KEY,
+      openMarketInspectorOnSelect.toString(),
+    );
+  }, [openMarketInspectorOnSelect]);
+
+  useEffect(() => {
     localStorage.setItem(SELECTED_LEAGUE_STORAGE_KEY, selectedLeague);
   }, [selectedLeague]);
 
@@ -582,6 +609,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({
     setPriceCheckCooldownMinutes,
     modifierRangePercent,
     setModifierRangePercent,
+    openMarketInspectorOnSelect,
+    setOpenMarketInspectorOnSelect,
     currencyRates,
     currencyRatesUpdatedAt,
     isRefreshingCurrencyRates,

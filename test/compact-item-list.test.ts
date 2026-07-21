@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   CompactItemNameButton,
   CompactItemList,
-  ItemViewToggle,
 } from "../src/components/CompactItemList";
 import { ItemPriceCheckOptions } from "../src/components/ItemPriceCheckOptions";
 import { PoeListItem } from "../src/components/PoeListItem";
@@ -92,12 +91,13 @@ test("renders one compact price row per item inside stash accordions", () => {
   expect(markup).toContain("~3 chaos");
   expect(markup).toContain("Not checked");
   expect(markup).toContain("Great price!");
-  expect(markup).toContain("On sale since");
-  expect(markup).toContain("07.18.2026 14:30");
+  expect(markup).toContain("Age");
+  expect(markup).toContain('title="On sale since: 07.18.2026 14:30"');
+  expect(markup).not.toContain(">07.18.2026 14:30<");
   expect(markup).toContain("Unknown");
   expect(markup).not.toContain("Already with a great price!");
   expect(markup).toContain(
-    'class="whitespace-nowrap text-green-400">Great price!',
+    'data-price-status="matches" class="whitespace-nowrap suggested-price">Great price!',
   );
   expect(markup).toContain("Action");
   expect(markup).toContain('aria-label="Price check Doom Loop"');
@@ -106,6 +106,72 @@ test("renders one compact price row per item inside stash accordions", () => {
   expect(markup.indexOf("Alpha (1 item)")).toBeLessThan(
     markup.indexOf("Shop (2 items)"),
   );
+});
+
+test("colors only the age cell when a listing becomes aging or stale", () => {
+  const aging = createItem("aging", "Shop", "Aging Item", 2, "chaos");
+  const stale = createItem("stale", "Shop", "Stale Item", 2, "chaos");
+  aging.listing.indexed = new Date(
+    Date.now() - 5 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  stale.listing.indexed = new Date(
+    Date.now() - 10 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const markup = renderToStaticMarkup(
+    createElement(CompactItemList, {
+      items: [aging, stale],
+      priceEstimates: {},
+      modifierSelections: {},
+      onPriceCheck: async () => {},
+      onModifierSelectionChange: () => {},
+      onStashPriceCheck: async () => {},
+      isPriceChecking: false,
+    }),
+  );
+
+  expect(markup).toContain('data-age-status="aging"');
+  expect(markup).toContain('aria-label="5d, aging listing"');
+  expect(markup).toContain('data-age-status="stale"');
+  expect(markup).toContain('aria-label="10d, stale listing"');
+  expect(markup).not.toContain('class="compact-price-grid trade-row trade-age');
+});
+
+test("reserves status color for suggested-price meaning", () => {
+  const items = [
+    createItem("review", "Shop", "Doom Loop", 2, "chaos"),
+    createItem("match", "Shop", "Rune Ward", 1, "divine"),
+  ];
+  const priceEstimates = {
+    review: {
+      price: { amount: 3, currency: "chaos" },
+    } as Estimate,
+    match: {
+      price: { amount: 1, currency: "divine" },
+      matchesCurrentPrice: true,
+    } as Estimate,
+  };
+
+  const markup = renderToStaticMarkup(
+    createElement(CompactItemList, {
+      items,
+      priceEstimates,
+      modifierSelections: {},
+      onPriceCheck: async () => {},
+      onModifierSelectionChange: () => {},
+      onStashPriceCheck: async () => {},
+      isPriceChecking: false,
+    }),
+  );
+
+  expect(markup).toContain('class="whitespace-nowrap listing-price"');
+  expect(markup).toContain(
+    'data-price-status="review" class="whitespace-nowrap suggested-price"',
+  );
+  expect(markup).toContain(
+    'data-price-status="matches" class="whitespace-nowrap suggested-price"',
+  );
+  expect(markup).toContain("app-button--quiet");
 });
 
 test("uses a text-only item-name toggle for compact price-check options", () => {
@@ -147,7 +213,7 @@ test("does not paint a compact item row when its name is hovered", () => {
     }),
   );
   const rowClassName = markup.match(
-    /aria-label="Doom Loop prices" class="([^"]+)"/,
+    /aria-label="Doom Loop prices"[^>]*class="([^"]+)"/,
   )?.[1];
 
   expect(rowClassName).toBeDefined();
@@ -207,25 +273,20 @@ test("shares the detailed modifier editor with the compact view", async () => {
   );
 });
 
-test("offers compact view without removing the detailed view", async () => {
-  const toggleMarkup = renderToStaticMarkup(
-    createElement(ItemViewToggle, {
-      value: "detailed",
-      onChange: () => {},
-    }),
-  );
+test("uses the compact sales workspace as the single main view", async () => {
   const mainPageSource = await Bun.file(
     `${import.meta.dir}/../src/components/MainPage.tsx`,
   ).text();
 
-  expect(toggleMarkup).toContain("Detailed");
-  expect(toggleMarkup).toContain("Compact");
-  expect(toggleMarkup).toContain('aria-pressed="true"');
-  expect(mainPageSource).toContain("<PoeListItem");
-  expect(mainPageSource).toContain("<CompactItemList");
-  expect(mainPageSource).toContain(
-    'React.useState<ItemViewMode>("compact")',
-  );
+  expect(mainPageSource).toContain("<TradeWorkspace");
+  expect(mainPageSource).not.toContain("<ItemViewToggle");
+  expect(mainPageSource).not.toContain("<PoeListItem");
+  expect(mainPageSource).not.toContain("ItemViewMode");
+  expect(mainPageSource).not.toContain("Detailed sales");
+  const workspaceSource = await Bun.file(
+    `${import.meta.dir}/../src/components/TradeWorkspace.tsx`,
+  ).text();
+  expect(workspaceSource).toContain("<CompactItemList");
   expect(mainPageSource).toContain("onPriceCheck={priceCheckItem}");
   expect(mainPageSource).toContain("onStashPriceCheck={priceCheckItems}");
 });

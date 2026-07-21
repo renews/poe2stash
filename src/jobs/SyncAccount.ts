@@ -7,7 +7,7 @@ export class SyncAccount extends Job<string[]> {
     super(
       "account-sync",
       "Sync Account",
-      "Finds every publicly listed trade item for this account. This might take a few minutes.",
+      "Finds every item in Your Sales for this account. This might take a few minutes.",
     );
   }
 

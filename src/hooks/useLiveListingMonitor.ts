@@ -95,7 +95,7 @@ export function useLiveListingMonitor({
       ]);
     } catch (fetchError) {
       console.error("Unable to fetch new live-search items", fetchError);
-      setError("A new listing was detected but could not be fetched.");
+      setError("A new item was detected but could not be fetched.");
     }
   }, [accountName, league, setItems, setLiveSearchItems]);
 
@@ -141,7 +141,7 @@ export function useLiveListingMonitor({
           monitoringRef.current = false;
           setIsMonitoring(false);
           setError(
-            "Automatic listing monitor disconnected. Select Start Auto Monitor to reconnect.",
+            "Connection was lost. Reconnect to resume automatic sales updates.",
           );
         }
       };
@@ -180,14 +180,14 @@ export function useLiveListingMonitor({
       }
       setupWebSocket(accountSearch.id, generation);
     } catch (startError) {
-      console.error("Unable to start automatic listing monitor", startError);
+      console.error("Unable to start automatic sales monitor", startError);
       if (generation === generationRef.current) {
         monitoringRef.current = false;
         setIsMonitoring(false);
         setError(
           startError instanceof Error
-            ? `Automatic listing monitor could not start: ${startError.message}`
-            : "Automatic listing monitor could not start.",
+            ? `Automatic sales monitor could not start: ${startError.message}`
+            : "Automatic sales monitor could not start.",
         );
       }
     } finally {

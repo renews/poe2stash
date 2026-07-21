@@ -24,6 +24,8 @@ const ConfigurationPage: React.FC = () => {
     setPriceCheckCooldownMinutes,
     modifierRangePercent,
     setModifierRangePercent,
+    openMarketInspectorOnSelect,
+    setOpenMarketInspectorOnSelect,
     isSyncing,
     getItems,
   } = useAppContext();
@@ -119,6 +121,25 @@ const ConfigurationPage: React.FC = () => {
           </span>
         </label>
 
+        <label className="flex cursor-pointer items-start gap-3 rounded border border-gray-700 bg-gray-900/60 p-4 text-left sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={openMarketInspectorOnSelect}
+            onChange={(event) =>
+              setOpenMarketInspectorOnSelect(event.target.checked)
+            }
+            className="form-checkbox mt-0.5 h-4 w-4"
+          />
+          <span>
+            <strong className="block text-sm font-semibold text-gray-100">
+              Open Market Inspector when selecting an item
+            </strong>
+            <span className="mt-1 block text-xs text-gray-400">
+              Opens the inspector only when you select a different item.
+            </span>
+          </span>
+        </label>
+
         <div className="flex items-end">
           <button
             type="submit"
@@ -126,8 +147,8 @@ const ConfigurationPage: React.FC = () => {
             className={primaryButtonClassName}
           >
             {isSyncing
-              ? "Syncing public listings..."
-              : "Sync publicly listed items"}
+              ? "Syncing your sales..."
+              : "Sync your sales"}
           </button>
         </div>
 

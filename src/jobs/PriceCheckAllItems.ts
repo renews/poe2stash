@@ -60,7 +60,7 @@ export class PriceCheckAllItems extends Job<Estimate> {
     super(
       "price-check-items",
       "Price Checking Items",
-      "Checking items listed...",
+      "Checking your sales...",
     );
   }
 

@@ -66,48 +66,71 @@ export const JobQueue: React.FC<JobQueueProps> = ({
   };
 
   return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-4">
-      <h2 className="text-xl font-semibold text-white mb-4">Job Queue</h2>
+    <section className="job-queue surface-card" aria-labelledby="job-queue-title">
+      <header className="job-queue__header">
+        <div>
+          <p className="page-eyebrow">Background activity</p>
+          <h2 id="job-queue-title">Job queue</h2>
+        </div>
+        <span className="job-queue__count">
+          {jobs.length} {jobs.length === 1 ? "active task" : "active tasks"}
+        </span>
+      </header>
       {jobs.length === 0 ? (
         <p className="text-gray-300">No active jobs</p>
       ) : (
-        <div className="space-y-4">
+        <div className="job-queue__list">
           {jobs.map((job) => (
-            <div key={job.id} className="bg-gray-700 p-4 rounded-md">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-medium text-white">{job.name}</h3>
+            <article key={job.id} className="job-card">
+              <div className="job-card__heading">
+                <div>
+                  <h3>{job.name}</h3>
+                  <span className="job-card__status">{job.status}</span>
+                </div>
                 <button
+                  type="button"
                   onClick={() => handleCancel(job.id)}
-                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded"
+                  aria-label={`Cancel ${job.name}`}
+                  className="app-button app-button--danger compact-action"
                 >
                   Cancel
                 </button>
               </div>
-              <p className="text-gray-300 text-sm mb-2">{job.description}</p>
-              <p className="text-red-200 text-sm mb-2">{job.error}</p>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Status: {job.status}</span>
+              <p className="job-card__description">{job.description}</p>
+              {job.error && (
+                <p role="alert" className="job-card__error">
+                  {job.error}
+                </p>
+              )}
+              <div className="job-card__meta">
+                <span>Status: {job.status}</span>
                 {job.currentProgress && (
-                  <span className="text-gray-400">
+                  <span>
                     Progress: {job.currentProgress.current} /{" "}
                     {job.currentProgress.total}
                   </span>
                 )}
               </div>
               {job.currentProgress && (
-                <div className="mt-2 bg-gray-600 rounded-full h-2.5">
-                  <div
-                    className="bg-blue-500 h-2.5 rounded-full"
+                <div
+                  className="job-progress"
+                  role="progressbar"
+                  aria-label={`${job.name} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={job.currentProgress.total}
+                  aria-valuenow={job.currentProgress.current}
+                >
+                  <span
                     style={{
                       width: `${(job.currentProgress.current / job.currentProgress.total) * 100}%`,
                     }}
-                  ></div>
+                  />
                 </div>
               )}
-            </div>
+            </article>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 };

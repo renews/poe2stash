@@ -87,3 +87,18 @@ export function getAllowedRendererOrigins(
 
   return [...origins];
 }
+
+export function isTrustedRendererUrl(
+  url: string | undefined,
+  allowedOrigins: string[],
+) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    return allowedOrigins.includes(new URL(url).origin);
+  } catch {
+    return false;
+  }
+}

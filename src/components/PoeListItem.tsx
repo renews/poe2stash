@@ -1,13 +1,10 @@
 import {
-  formatItemMod,
   formatDateTime,
   formatPriceAmount,
   formatSuggestedPriceLabel,
   ModifierSelection,
   Price,
   Poe2Item,
-  getItemModifierHash,
-  getModifierDisplayKind,
 } from "../services/types";
 import { useState } from "react";
 import { Estimate, PriceChecker } from "../services/PriceEstimator";
@@ -19,8 +16,9 @@ import {
   setItemBlockExpanded,
 } from "../services/itemBlockState";
 import { completeModifierSelection } from "../services/modifierSelection";
-import { modifierColorClass } from "./formStyles";
 import { ItemPriceCheckOptions } from "./ItemPriceCheckOptions";
+import { ComparableItemHoverCard } from "./ComparableItemHoverCard";
+import { useUpscaledPrices } from "../hooks/useUpscaledPrices";
 
 export const ItemNameWithRarity: React.FC<{
   item: Poe2Item;
@@ -62,110 +60,6 @@ export const ItemNameWithRarity: React.FC<{
         {itemName}
       </h2>
     </button>
-  );
-};
-
-const ComparableItemTooltip: React.FC<{
-  item: Poe2Item;
-  usedExplicitHashes?: Set<string>;
-  usedImplicitHashes?: Set<string>;
-}> = ({ item, usedExplicitHashes, usedImplicitHashes }) => {
-  const renderMods = (
-    mods: Poe2Item["item"]["explicitMods"],
-    section: "implicit" | "explicit" | "enchant",
-  ) =>
-    mods?.map((mod, index) => {
-      const kind = getModifierDisplayKind(item, section, index);
-      const usedHashes =
-        section === "explicit"
-          ? usedExplicitHashes
-          : section === "implicit"
-            ? usedImplicitHashes
-            : undefined;
-      const hash = getItemModifierHash(item, section, index, mod);
-      const isUsed = !usedHashes || !hash || usedHashes.has(hash);
-
-      return (
-        <li
-          key={index}
-          className={`${modifierColorClass(kind)} ${isUsed ? "" : "line-through opacity-60"}`}
-          title={isUsed ? kind : `${kind} · not used in search`}
-        >
-          {formatItemMod(mod)}
-        </li>
-      );
-    });
-
-  return (
-    <div className="pointer-events-none invisible absolute left-0 top-full z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-md border border-gray-500 bg-gray-900 p-3 text-left text-xs text-gray-100 shadow-2xl group-hover:visible group-focus-within:visible">
-      <div className="flex items-start gap-3">
-        <img
-          src={item.item.icon}
-          alt={item.item.name || item.item.typeLine}
-          className="h-12 w-12 rounded"
-        />
-        <div>
-          <p className="font-semibold text-orange-300">
-            {item.item.name || item.item.typeLine}
-          </p>
-          <p className="text-gray-300">
-            {item.item.rarity} {item.item.typeLine || item.item.baseType}
-          </p>
-          <p className="text-gray-400">
-            Item level {item.item.ilvl} · {item.listing.price.amount}{" "}
-            {item.listing.price.currency}
-          </p>
-        </div>
-      </div>
-
-      {item.item.corrupted && (
-        <p className="mt-2 font-semibold text-red-400">Corrupted</p>
-      )}
-
-      {item.item.properties?.length > 0 && (
-        <ul className="mt-2 space-y-1 text-gray-300">
-          {item.item.properties.map((property, index) => (
-            <li key={index}>
-              {property.name}:{" "}
-              {property.values.map((value) => value[0]).join(", ")}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {item.item.implicitMods?.length ? (
-        <div className="mt-2">
-          <p className="font-semibold text-blue-300">Implicit</p>
-          <ul className="space-y-1 text-blue-200">
-            {renderMods(item.item.implicitMods, "implicit")}
-          </ul>
-        </div>
-      ) : null}
-
-      {item.item.enchantMods?.length ? (
-        <div className="mt-2">
-          <p className="font-semibold text-purple-300">Enchant</p>
-          <ul className="space-y-1 text-purple-200">
-            {renderMods(item.item.enchantMods, "enchant")}
-          </ul>
-        </div>
-      ) : null}
-
-      {item.item.explicitMods?.length ? (
-        <div className="mt-2">
-          <p className="font-semibold text-gray-300">Explicit</p>
-          <ul className="space-y-1 text-gray-200">
-            {renderMods(item.item.explicitMods, "explicit")}
-          </ul>
-        </div>
-      ) : null}
-
-      {item.item.sockets?.length ? (
-        <p className="mt-2 text-gray-400">
-          Sockets: {item.item.sockets.length}
-        </p>
-      ) : null}
-    </div>
   );
 };
 
@@ -254,6 +148,32 @@ export function PoeListItem(props: {
     priceEstimate?.sourceComparableCount ?? comparableCount;
   const marketValuation = priceEstimate?.market;
   const marketIsPrimary = priceEstimate?.source === "poe2scout";
+  const recentMarketHistory =
+    isExpanded && marketValuation
+      ? marketValuation.history.slice(-6).reverse()
+      : [];
+  const [displayedMarketBaseline] = useUpscaledPrices(
+    isExpanded && marketValuation && !marketIsPrimary
+      ? [marketValuation.price]
+      : [],
+    itemLeague,
+  );
+  const displayedMarketHistory = useUpscaledPrices(
+    recentMarketHistory.map((point) => ({
+      amount: point.amount,
+      currency: "exalted",
+    })),
+    itemLeague,
+  );
+  const displayedComparablePrices = useUpscaledPrices(
+    isExpanded
+      ? (priceEstimate?.comparables || []).map((comparable) => ({
+          amount: comparable.amount,
+          currency: comparable.currency,
+        }))
+      : [],
+    itemLeague,
+  );
   const confidenceLabel = priceEstimate?.confidence
     ? `${priceEstimate.confidence[0].toUpperCase()}${priceEstimate.confidence.slice(1)}`
     : "Unknown";
@@ -355,8 +275,8 @@ export function PoeListItem(props: {
             {!marketIsPrimary && marketValuation && (
               <p className="mt-2 rounded border border-blue-700 bg-blue-950/40 p-2 text-xs text-blue-200">
                 Poe2Scout market baseline:{" "}
-                {formatPriceAmount(marketValuation.price.amount)}{" "}
-                {marketValuation.price.currency} · Updated:{" "}
+                {formatPriceAmount(displayedMarketBaseline.amount)}{" "}
+                {displayedMarketBaseline.currency} · Updated:{" "}
                 {formatDateTime(marketValuation.updatedAt)}
               </p>
             )}
@@ -396,16 +316,18 @@ export function PoeListItem(props: {
                   Recent market history
                 </p>
                 <ul className="mt-1 space-y-1 text-xs text-gray-300">
-                  {marketValuation.history
-                    .slice(-6)
-                    .reverse()
-                    .map((point) => (
+                  {recentMarketHistory.map((point, index) => {
+                    const displayedPrice = displayedMarketHistory[index];
+
+                    return (
                       <li key={point.updatedAt}>
                         {formatDateTime(point.updatedAt)} ·{" "}
-                        {formatPriceAmount(point.amount)} exalted ·{" "}
+                        {formatPriceAmount(displayedPrice.amount)}{" "}
+                        {displayedPrice.currency} ·{" "}
                         {point.quantity.toLocaleString()} volume
                       </li>
-                    ))}
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -421,24 +343,31 @@ export function PoeListItem(props: {
                     (comparable, index) => (
                       <li
                         key={`${comparable.itemId}-${index}`}
-                        tabIndex={comparable.item ? 0 : undefined}
-                        className="group relative rounded px-1 py-0.5 hover:bg-gray-600 focus:bg-gray-600"
+                        className="rounded px-1 py-0.5 hover:bg-gray-600 focus-within:bg-gray-600"
                       >
-                        <span>
-                          {comparable.listedAmount} {comparable.listedCurrency}
-                          {comparable.currency !==
-                            comparable.listedCurrency && (
-                            <span className="text-gray-400">
-                              {` (~${formatPriceAmount(comparable.amount)} ${comparable.currency})`}
-                            </span>
-                          )}
-                        </span>
-                        {comparable.item && (
-                          <ComparableItemTooltip
+                        {comparable.item ? (
+                          <ComparableItemHoverCard
                             item={comparable.item}
                             usedExplicitHashes={usedExplicitHashes}
                             usedImplicitHashes={usedImplicitHashes}
-                          />
+                            className="w-full outline-none"
+                          >
+                            <span>
+                              {comparable.listedAmount}{" "}
+                              {comparable.listedCurrency}
+                              {comparable.currency !==
+                                comparable.listedCurrency && (
+                                <span className="text-gray-400">
+                                  {` (~${formatPriceAmount(displayedComparablePrices[index].amount)} ${displayedComparablePrices[index].currency})`}
+                                </span>
+                              )}
+                            </span>
+                          </ComparableItemHoverCard>
+                        ) : (
+                          <span>
+                            {comparable.listedAmount}{" "}
+                            {comparable.listedCurrency}
+                          </span>
                         )}
                       </li>
                     ),

@@ -84,7 +84,7 @@ export class MerchantHistoryService {
           Accept: "application/json",
           Referer: "https://www.pathofexile.com/trade2/history",
           "X-Requested-With": "XMLHttpRequest",
-          "User-Agent": `${app.userAgentFallback} (Poe2Stash Merchant History)`,
+          "User-Agent": `${app.userAgentFallback} (Poe Dash Merchant History)`,
         },
       });
       const chunks: Buffer[] = [];
