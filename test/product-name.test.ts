@@ -59,6 +59,9 @@ test("publishes every desktop artifact for version tags", async () => {
   expect(workflow).toContain("release/*/*.AppImage");
   expect(workflow).toContain("release/*/*.exe");
   expect(workflow).toContain("release/*/*.dmg");
+  expect(workflow).toContain("Flatten native artifacts");
+  expect(workflow).toContain("--target-directory=release-assets");
+  expect(workflow).toContain("-type d -empty -delete");
   expect(workflow).toContain("gh release create");
   expect(readme).toContain("Linux AppImage");
   expect(readme).toContain("Windows installer and portable app");
