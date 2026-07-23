@@ -9,7 +9,7 @@ This project is in active development, and I intend to build out some more commu
 
 ## Releases
 You can download the latest release from the [releases page](https://github.com/renews/poe-dash/releases).
-There should be a windows portable and a MacOS dmg available on each release
+Each release includes a Linux AppImage, a Windows installer and portable app, and a macOS DMG.
 
 
 ## Features

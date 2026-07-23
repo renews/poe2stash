@@ -44,6 +44,27 @@ test("starts the Linux package through XWayland for app-owned shortcuts", async 
   expect(builder).toContain('"executableArgs": ["--ozone-platform=x11"]');
 });
 
+test("publishes every desktop artifact for version tags", async () => {
+  const [packageJson, workflow, readme] = await Promise.all([
+    Bun.file(`${import.meta.dir}/../package.json`).json(),
+    Bun.file(`${import.meta.dir}/../.github/workflows/release.yml`).text(),
+    Bun.file(`${import.meta.dir}/../README.md`).text(),
+  ]);
+
+  expect(packageJson.version).toBe("1.0.0");
+  expect(workflow).toContain('tags: ["v*"]');
+  expect(workflow).toContain("ubuntu-latest");
+  expect(workflow).toContain("windows-latest");
+  expect(workflow).toContain("macos-15-intel");
+  expect(workflow).toContain("release/*/*.AppImage");
+  expect(workflow).toContain("release/*/*.exe");
+  expect(workflow).toContain("release/*/*.dmg");
+  expect(workflow).toContain("gh release create");
+  expect(readme).toContain("Linux AppImage");
+  expect(readme).toContain("Windows installer and portable app");
+  expect(readme).toContain("macOS DMG");
+});
+
 test("uses the official Divine Orb artwork for the application icon", async () => {
   const [runtimeIcon, bundleIcon] = await Promise.all([
     Bun.file(`${import.meta.dir}/../public/poe-dash-icon.png`).arrayBuffer(),
