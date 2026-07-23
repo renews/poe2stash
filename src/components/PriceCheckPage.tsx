@@ -5,7 +5,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { ClipboardPaste, Keyboard, ScanSearch } from "lucide-react";
+import {
+  ClipboardPaste,
+  Keyboard,
+  LoaderCircle,
+  ScanSearch,
+} from "lucide-react";
 import { useAppContext } from "../contexts/AppContext";
 import { checkCopiedItemPrice } from "../services/copiedItemPriceCheck";
 import { parseCopiedItemText } from "../services/copiedItemParser";
@@ -205,20 +210,38 @@ export function PriceCheckPageView(props: PriceCheckPageViewProps) {
                 {props.error}
               </p>
             )}
-            <p
+            <div
               id="price-check-status"
               className="price-check-status"
+              data-checking={isChecking}
+              role="status"
               aria-live="polite"
               aria-atomic="true"
             >
-              {isChecking
-                ? "Checking comparable listings."
-                : props.estimate
-                  ? `Price check complete. Recommended price ${formatSuggestedPriceLabel(props.estimate.price)} in ${props.selectedLeague}.`
-                : props.itemText.trim()
-                  ? "Item data ready to check."
-                  : "Paste an item to begin."}
-            </p>
+              {isChecking && (
+                <span className="price-check-status__spinner">
+                  <LoaderCircle aria-hidden="true" />
+                </span>
+              )}
+              <div className="price-check-status__message">
+                {isChecking ? (
+                  <>
+                    <strong>Checking price…</strong>
+                    <span>
+                      Searching comparable listings in {props.selectedLeague}.
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    {props.estimate
+                      ? `Price check complete. Recommended price ${formatSuggestedPriceLabel(props.estimate.price)} in ${props.selectedLeague}.`
+                      : props.itemText.trim()
+                        ? "Item data ready to check."
+                        : "Paste an item to begin."}
+                  </span>
+                )}
+              </div>
+            </div>
             {props.item && props.modifierSelection && (
               <details className="price-check-options">
                 <summary>Pricing filters</summary>

@@ -32,9 +32,9 @@ test("ignores an empty saved chat log path", () => {
 
 test("uses a stable per-user config path", () => {
   expect(getStableConfigPath("/home/coder", undefined)).toBe(
-    "/home/coder/.config/poe2stash/config.json",
+    "/home/coder/.config/poe-dash/config.json",
   );
   expect(getStableConfigPath("/home/coder", "/tmp/config")).toBe(
-    "/tmp/config/poe2stash/config.json",
+    "/tmp/config/poe-dash/config.json",
   );
 });

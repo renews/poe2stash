@@ -8,7 +8,16 @@ import {
   isPathOfExileForegroundWindow,
   pressPoeCopyShortcut,
 } from "../electron/app/priceCheckClipboard";
-import { getLivePriceCheckPlatformIssue } from "../electron/app/foregroundWindow";
+import {
+  getLivePriceCheckPlatformIssue,
+  isNiriSession,
+  parseNiriFocusedWindow,
+} from "../electron/app/foregroundWindow";
+import {
+  PriceCheckGlobalShortcut,
+  toElectronAccelerator,
+} from "../electron/app/priceCheckGlobalShortcut";
+import { pressPoeItemCopyWithXdotool } from "../electron/app/poeCopyKeyboard";
 import {
   DEFAULT_PRICE_CHECK_SHORTCUT,
   parsePriceCheckShortcut,
@@ -49,6 +58,31 @@ test("captures only newly copied Path of Exile item text", async () => {
   expect(writes).toEqual([""]);
   expect(isPoeItemText("my clipboard secret")).toBe(false);
   expect(isPoeItemText(NEW_ITEM)).toBe(true);
+});
+
+test("primes the Linux clipboard with a non-empty marker before copying", async () => {
+  let clipboard = "notes to preserve";
+  const events: string[] = [];
+  const marker = "__POE_DASH_FORCE_COPY_test";
+
+  const captured = await capturePoeItemText(
+    {
+      readText: () => clipboard,
+      writeText: (text) => {
+        events.push(`write:${text}`);
+        clipboard = text;
+      },
+      pressCopy: () => {
+        events.push(`copy-after:${clipboard}`);
+        clipboard = NEW_ITEM;
+      },
+      wait: async () => {},
+    },
+    { clipboardMarker: marker },
+  );
+
+  expect(captured).toBe(NEW_ITEM);
+  expect(events).toEqual([`write:${marker}`, `copy-after:${marker}`]);
 });
 
 test("restores the clipboard when the game does not provide an item", async () => {
@@ -140,6 +174,30 @@ test("releases the configured key and modifiers before copying", async () => {
     "down:Ctrl",
     "tap:C",
     "up:Ctrl",
+  ]);
+});
+
+test("releases the Niri shortcut grab before copying through Xdotool", async () => {
+  const calls: Array<{ command: string; args: string[] }> = [];
+  const shortcut = parsePriceCheckShortcut("Alt+Y");
+  expect(shortcut).toBeDefined();
+
+  await pressPoeItemCopyWithXdotool(
+    async (command, args) => {
+      calls.push({ command, args });
+    },
+    shortcut!,
+  );
+
+  expect(calls).toEqual([
+    {
+      command: "xdotool",
+      args: ["keyup", "y", "keyup", "Alt_L"],
+    },
+    {
+      command: "xdotool",
+      args: ["key", "--clearmodifiers", "ctrl+c"],
+    },
   ]);
 });
 
@@ -292,14 +350,75 @@ test("captures a supported shortcut from the Settings key field", () => {
   ).toBeUndefined();
 });
 
-test("reports Wayland as unsupported before enabling the Linux live shortcut", () => {
+test("supports Niri while keeping other Wayland sessions disabled", () => {
   expect(
     getLivePriceCheckPlatformIssue("linux", { XDG_SESSION_TYPE: "wayland" }),
   ).toContain("X11");
+  const niriEnvironment = {
+    XDG_SESSION_TYPE: "wayland",
+    XDG_CURRENT_DESKTOP: "niri",
+    NIRI_SOCKET: "/run/user/1000/niri.wayland-1.sock",
+  };
+  expect(isNiriSession(niriEnvironment)).toBe(true);
+  expect(getLivePriceCheckPlatformIssue("linux", niriEnvironment)).toBeUndefined();
   expect(
     getLivePriceCheckPlatformIssue("linux", { XDG_SESSION_TYPE: "x11" }),
   ).toBeUndefined();
   expect(getLivePriceCheckPlatformIssue("darwin", {})).toBeUndefined();
+});
+
+test("maps the Niri focused XWayland window to the existing PoE identity", () => {
+  const focusedWindow = parseNiriFocusedWindow(
+    JSON.stringify({
+      id: 6,
+      title: "Path of Exile 2",
+      app_id: "steam_app_2694490",
+      pid: 1923,
+      is_focused: true,
+    }),
+  );
+
+  expect(focusedWindow).toEqual({
+    processName: "steam_app_2694490",
+    title: "Path of Exile 2",
+  });
+  expect(isPathOfExileForegroundWindow(focusedWindow)).toBe(true);
+});
+
+test("reserves only the configured Niri shortcut through the app", () => {
+  const registered: string[] = [];
+  const unregistered: string[] = [];
+  const callbacks = new Map<string, () => void>();
+  const shortcut = new PriceCheckGlobalShortcut({
+    register: (accelerator, callback) => {
+      registered.push(accelerator);
+      callbacks.set(accelerator, callback);
+      return true;
+    },
+    unregister: (accelerator) => {
+      unregistered.push(accelerator);
+      callbacks.delete(accelerator);
+    },
+  });
+  let captures = 0;
+  const capture = () => {
+    captures += 1;
+  };
+  const oldBinding = parsePriceCheckShortcut("Ctrl+Alt+D");
+  const newBinding = parsePriceCheckShortcut("Alt+Y");
+  expect(oldBinding).toBeDefined();
+  expect(newBinding).toBeDefined();
+
+  expect(shortcut.register(oldBinding!, capture)).toBe(true);
+  expect(shortcut.register(newBinding!, capture)).toBe(true);
+  callbacks.get("Alt+Y")?.();
+
+  expect(registered).toEqual(["Control+Alt+D", "Alt+Y"]);
+  expect(unregistered).toEqual(["Control+Alt+D"]);
+  expect(captures).toBe(1);
+  expect(toElectronAccelerator(parsePriceCheckShortcut("Meta+Shift+F10")!)).toBe(
+    "Super+Shift+F10",
+  );
 });
 
 test("buffers a captured item until the renderer subscribes", () => {
@@ -313,4 +432,19 @@ test("buffers a captured item until the renderer subscribes", () => {
   channel.publish("ignored after unsubscribe");
 
   expect(received).toEqual([NEW_ITEM, OLD_ITEM]);
+});
+
+test("delivers a captured item without stealing focus from Path of Exile", async () => {
+  const mainSource = await Bun.file(
+    `${import.meta.dir}/../electron/main.ts`,
+  ).text();
+  const deliverySource = mainSource.slice(
+    mainSource.indexOf("function deliverCapturedPriceCheckItem"),
+    mainSource.indexOf("async function captureLivePriceCheckItem"),
+  );
+
+  expect(deliverySource).toContain(
+    'win.webContents.send("price-check-item-copied", itemText)',
+  );
+  expect(deliverySource).not.toContain("focusMainWindow()");
 });

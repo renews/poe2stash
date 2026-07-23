@@ -8,7 +8,7 @@ Analyze your Path of Exile 2 stash tabs with price checks and live monitoring.
 This project is in active development, and I intend to build out some more community oriented features in the future.
 
 ## Releases
-You can download the latest release from the [releases page](https://github.com/micahriggan/poe2stash/releases).
+You can download the latest release from the [releases page](https://github.com/renews/poe-dash/releases).
 There should be a windows portable and a MacOS dmg available on each release
 
 

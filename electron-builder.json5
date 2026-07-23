@@ -1,7 +1,7 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "Poe2Stash",
+  "appId": "PoeDash",
   "asar": true,
   "asarUnpack": [
     "node_modules/uiohook-napi/prebuilds/**/*"
@@ -48,6 +48,7 @@
     "deleteAppDataOnUninstall": false
   },
   "linux": {
+    "executableArgs": ["--ozone-platform=x11"],
     "target": [
       "AppImage"
     ],

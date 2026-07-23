@@ -25,6 +25,30 @@ let shortcutKeyDownListener:
   | undefined;
 let shortcutKeyUpListener: ((event: { keycode: number }) => void) | undefined;
 
+type XdotoolCommandRunner = (
+  command: string,
+  args: string[],
+) => Promise<unknown>;
+
+export async function pressPoeItemCopyWithXdotool(
+  runCommand: XdotoolCommandRunner,
+  shortcut: PriceCheckShortcutBinding = activeShortcut,
+) {
+  const keysToRelease = [
+    shortcut.key.toLowerCase(),
+    shortcut.ctrlKey ? "Control_L" : undefined,
+    shortcut.altKey ? "Alt_L" : undefined,
+    shortcut.metaKey ? "Super_L" : undefined,
+    shortcut.shiftKey ? "Shift_L" : undefined,
+  ].filter((key): key is string => Boolean(key));
+
+  await runCommand(
+    "xdotool",
+    keysToRelease.flatMap((key) => ["keyup", key]),
+  );
+  await runCommand("xdotool", ["key", "--clearmodifiers", "ctrl+c"]);
+}
+
 export function startPoeCopyKeyboard(
   onPriceCheck: () => void,
   shortcut: PriceCheckShortcutBinding = DEFAULT_PRICE_CHECK_SHORTCUT_BINDING,

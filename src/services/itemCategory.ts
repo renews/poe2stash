@@ -116,11 +116,21 @@ function normalizeItemClass(value: string) {
     .toLowerCase();
 }
 
+const IRREGULAR_PLURAL_ITEM_CLASSES: Record<string, string> = {
+  foci: "focus",
+  quarterstaves: "quarterstaff",
+  staves: "staff",
+};
+
 function getCategoryFromItemClass(item: Poe2Item) {
   for (const property of item.item?.properties || []) {
     const itemClass = normalizeItemClass(property.name || "");
+    const singularItemClass =
+      IRREGULAR_PLURAL_ITEM_CLASSES[itemClass] || itemClass.replace(/s$/, "");
     const match = ITEM_CLASS_CATEGORIES.find(([name]) =>
-      itemClass.endsWith(name),
+      [itemClass, singularItemClass].some((candidate) =>
+        candidate.endsWith(name),
+      ),
     );
     if (match) {
       return match[1];

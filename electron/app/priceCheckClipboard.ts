@@ -23,6 +23,7 @@ interface PriceCheckClipboardDependencies {
 interface PriceCheckClipboardOptions {
   pollIntervalMs?: number;
   timeoutMs?: number;
+  clipboardMarker?: string;
 }
 
 type PoeCopyKey = PriceCheckShortcutKey | "Ctrl" | "Alt" | "Meta" | "Shift";
@@ -163,9 +164,11 @@ export async function capturePoeItemText(
   const wait = dependencies.wait || defaultWait;
   const previousText = dependencies.readText();
   const clearedStaleItem = isPoeItemText(previousText);
+  const clipboardResetText =
+    options.clipboardMarker ?? (clearedStaleItem ? "" : undefined);
 
-  if (clearedStaleItem) {
-    dependencies.writeText("");
+  if (clipboardResetText !== undefined) {
+    dependencies.writeText(clipboardResetText);
   }
 
   try {
@@ -183,7 +186,10 @@ export async function capturePoeItemText(
       "No Path of Exile item was copied. Hover an item and try again.",
     );
   } catch (error) {
-    if (clearedStaleItem || dependencies.readText() !== previousText) {
+    if (
+      clipboardResetText !== undefined ||
+      dependencies.readText() !== previousText
+    ) {
       dependencies.writeText(previousText);
     }
     throw error;

@@ -264,7 +264,9 @@ export class Poe2TradeClient {
               gem_sockets: this.range(searchParams.gem_sockets),
               area_level: this.range(searchParams.area_level),
               stack_size: this.range(searchParams.stack_size),
-              corrupted: searchParams.corrupted,
+              corrupted: searchParams.corrupted
+                ? { option: searchParams.corrupted }
+                : undefined,
             },
           },
 

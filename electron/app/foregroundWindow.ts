@@ -37,6 +37,37 @@ export interface ForegroundWindowInfo {
   title: string;
 }
 
+export function isNiriSession(
+  environment: Record<string, string | undefined> = process.env,
+) {
+  return (
+    Boolean(environment.NIRI_SOCKET?.trim()) ||
+    [
+      environment.XDG_CURRENT_DESKTOP,
+      environment.XDG_SESSION_DESKTOP,
+      environment.DESKTOP_SESSION,
+    ].some((value) =>
+      value
+        ?.toLowerCase()
+        .split(/[:,;]/)
+        .some((desktop) => desktop.trim() === "niri"),
+    )
+  );
+}
+
+export function parseNiriFocusedWindow(output: string): ForegroundWindowInfo {
+  const value: unknown = JSON.parse(output);
+  if (!value || typeof value !== "object") {
+    return { processName: "", title: "" };
+  }
+  const focusedWindow = value as Record<string, unknown>;
+  return {
+    processName:
+      typeof focusedWindow.app_id === "string" ? focusedWindow.app_id : "",
+    title: typeof focusedWindow.title === "string" ? focusedWindow.title : "",
+  };
+}
+
 function parseForegroundOutput(output: string): ForegroundWindowInfo {
   const [processName = "", ...titleParts] = output
     .trim()
@@ -54,7 +85,8 @@ export function getLivePriceCheckPlatformIssue(
   if (
     platform === "linux" &&
     (environment.XDG_SESSION_TYPE?.toLowerCase() === "wayland" ||
-      Boolean(environment.WAYLAND_DISPLAY))
+      Boolean(environment.WAYLAND_DISPLAY)) &&
+    !isNiriSession(environment)
   ) {
     return "Live price check requires an X11 session on Linux. Manual paste is still available.";
   }
@@ -64,6 +96,7 @@ export function getLivePriceCheckPlatformIssue(
 
 export async function getForegroundWindowInfo(
   platform: NodeJS.Platform = process.platform,
+  environment: Record<string, string | undefined> = process.env,
 ): Promise<ForegroundWindowInfo> {
   if (platform === "darwin") {
     const { stdout } = await execFileAsync("osascript", [
@@ -84,6 +117,15 @@ export async function getForegroundWindowInfo(
   }
 
   if (platform === "linux") {
+    if (isNiriSession(environment)) {
+      const { stdout } = await execFileAsync("niri", [
+        "msg",
+        "--json",
+        "focused-window",
+      ]);
+      return parseNiriFocusedWindow(stdout);
+    }
+
     const { stdout: windowIdOutput } = await execFileAsync("xdotool", [
       "getactivewindow",
     ]);

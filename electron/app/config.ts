@@ -6,5 +6,5 @@ export function getStableConfigPath(
   configDirectory = process.env.XDG_CONFIG_HOME,
 ) {
   const baseDirectory = configDirectory?.trim() || path.join(homeDirectory, ".config");
-  return path.join(baseDirectory, "poe2stash", "config.json");
+  return path.join(baseDirectory, "poe-dash", "config.json");
 }

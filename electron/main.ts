@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  globalShortcut,
   ipcMain,
   nativeTheme,
   Notification,
@@ -38,11 +39,13 @@ import {
 import {
   getForegroundWindowInfo,
   getLivePriceCheckPlatformIssue,
+  isNiriSession,
 } from "./app/foregroundWindow";
 import {
   capturePoeItemText,
   isPathOfExileForegroundWindow,
 } from "./app/priceCheckClipboard";
+import { PriceCheckGlobalShortcut } from "./app/priceCheckGlobalShortcut";
 import {
   DEFAULT_PRICE_CHECK_SHORTCUT_BINDING,
   parsePriceCheckShortcut,
@@ -51,6 +54,7 @@ import {
 
 const PORT = process.env.PORT || 7555;
 const execFileAsync = promisify(execFile);
+const useNiriGlobalShortcut = process.platform === "linux" && isNiriSession();
 
 //const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -88,7 +92,7 @@ let activePriceCheckCapture: Promise<void> | undefined;
 let pressPoeItemCopy: (() => Promise<void>) | undefined;
 let stopPoeCopyKeyboard: (() => void) | undefined;
 let updatePoeCopyKeyboardShortcut:
-  | ((shortcut: PriceCheckShortcutBinding) => void)
+  | ((shortcut: PriceCheckShortcutBinding) => boolean)
   | undefined;
 let activePriceCheckShortcut = DEFAULT_PRICE_CHECK_SHORTCUT_BINDING;
 let pendingPriceCheckItemText: string | undefined;
@@ -230,7 +234,6 @@ function deliverCapturedPriceCheckItem(itemText: string) {
     createWindow();
     createdWindow = true;
   }
-  focusMainWindow();
 
   if (win && !createdWindow && !win.webContents.isLoadingMainFrame()) {
     pendingPriceCheckItemText = undefined;
@@ -263,6 +266,11 @@ async function captureLivePriceCheckItem() {
         }
         return pressPoeItemCopy();
       },
+    }, {
+      clipboardMarker:
+        process.platform === "linux"
+          ? `__POE_DASH_FORCE_COPY_${Date.now()}`
+          : undefined,
     });
     deliverCapturedPriceCheckItem(itemText);
   } catch (error) {
@@ -272,6 +280,15 @@ async function captureLivePriceCheckItem() {
         : "No Path of Exile item was copied.",
     );
   }
+}
+
+function requestLivePriceCheckCapture() {
+  if (activePriceCheckCapture) {
+    return;
+  }
+  activePriceCheckCapture = captureLivePriceCheckItem().finally(() => {
+    activePriceCheckCapture = undefined;
+  });
 }
 
 async function registerLivePriceCheckShortcut() {
@@ -313,17 +330,42 @@ async function registerLivePriceCheckShortcut() {
     }
 
     const keyboard = await import("./app/poeCopyKeyboard");
-    pressPoeItemCopy = keyboard.pressPoeItemCopy;
-    updatePoeCopyKeyboardShortcut = keyboard.updatePoeCopyKeyboardShortcut;
-    keyboard.startPoeCopyKeyboard(() => {
-      if (activePriceCheckCapture) {
-        return;
+    if (useNiriGlobalShortcut) {
+      pressPoeItemCopy = () =>
+        keyboard.pressPoeItemCopyWithXdotool(
+          (command, args) => execFileAsync(command, args),
+          activePriceCheckShortcut,
+        );
+      const shortcut = new PriceCheckGlobalShortcut(globalShortcut);
+      if (
+        !shortcut.register(
+          activePriceCheckShortcut,
+          requestLivePriceCheckCapture,
+        )
+      ) {
+        throw new Error(
+          `Poe Dash could not reserve ${activePriceCheckShortcut.label}.`,
+        );
       }
-      activePriceCheckCapture = captureLivePriceCheckItem().finally(() => {
-        activePriceCheckCapture = undefined;
-      });
-    }, activePriceCheckShortcut);
-    stopPoeCopyKeyboard = keyboard.stopPoeCopyKeyboard;
+      updatePoeCopyKeyboardShortcut = (binding) => {
+        if (!shortcut.register(binding, requestLivePriceCheckCapture)) {
+          return false;
+        }
+        return true;
+      };
+      stopPoeCopyKeyboard = () => shortcut.stop();
+    } else {
+      pressPoeItemCopy = keyboard.pressPoeItemCopy;
+      updatePoeCopyKeyboardShortcut = (shortcut) => {
+        keyboard.updatePoeCopyKeyboardShortcut(shortcut);
+        return true;
+      };
+      keyboard.startPoeCopyKeyboard(
+        requestLivePriceCheckCapture,
+        activePriceCheckShortcut,
+      );
+      stopPoeCopyKeyboard = keyboard.stopPoeCopyKeyboard;
+    }
     priceCheckShortcutStatus = {
       registered: true,
       shortcut: activePriceCheckShortcut.label,
@@ -446,9 +488,16 @@ ipcMain.handle("price-check-shortcut-update", async (event, value: unknown) => {
     throw new Error("Invalid live price check shortcut");
   }
 
-  activePriceCheckShortcut = shortcut;
   await priceCheckRegistrationPromise;
-  updatePoeCopyKeyboardShortcut?.(shortcut);
+  if (updatePoeCopyKeyboardShortcut?.(shortcut) === false) {
+    priceCheckShortcutStatus = {
+      registered: true,
+      shortcut: activePriceCheckShortcut.label,
+      error: `${shortcut.label} could not be reserved; ${activePriceCheckShortcut.label} remains active.`,
+    };
+    return priceCheckShortcutStatus;
+  }
+  activePriceCheckShortcut = shortcut;
   priceCheckShortcutStatus = {
     ...priceCheckShortcutStatus,
     shortcut: shortcut.label,

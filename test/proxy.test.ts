@@ -1,7 +1,7 @@
 import axios from "axios";
 import { expect, test } from "bun:test";
 
-const liveTest = process.env.POE2STASH_LIVE_TESTS ? test : test.skip;
+const liveTest = process.env.POE_DASH_LIVE_TESTS ? test : test.skip;
 
 liveTest("forwards requests through a running local proxy", async () => {
   const url =

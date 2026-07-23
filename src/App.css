@@ -602,10 +602,73 @@
 }
 
 .price-check-status {
+  display: flex;
   min-height: 18px;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   color: #8d8576;
   font-size: 11px;
+}
+
+.price-check-status[data-checking="true"] {
+  min-height: 62px;
+  padding: 11px 13px;
+  border: 1px solid #6f572c;
+  border-left: 3px solid var(--gold);
+  color: #d8c79e;
+  background:
+    linear-gradient(90deg, rgba(176, 126, 40, 0.16), transparent 72%),
+    rgba(24, 20, 14, 0.92);
+  box-shadow:
+    inset 0 0 22px rgba(182, 128, 34, 0.08),
+    0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.price-check-status__spinner {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 50%;
+  color: #e0b75f;
+  background: rgba(182, 128, 34, 0.13);
+}
+
+.price-check-status__spinner svg {
+  width: 19px;
+  height: 19px;
+  animation: price-check-spin 900ms linear infinite;
+}
+
+.price-check-status__message {
+  display: grid;
+  gap: 3px;
+}
+
+.price-check-status__message strong {
+  color: #f0d99f;
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.price-check-status__message span {
+  line-height: 1.45;
+}
+
+@keyframes price-check-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .price-check-status__spinner svg {
+    animation: none;
+  }
 }
 
 .price-check-options {

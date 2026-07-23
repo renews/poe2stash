@@ -1186,6 +1186,41 @@ test("serializes required-level ranges and relaxed stat groups", async () => {
   });
 });
 
+test("serializes the copied-item corruption state as an option filter", async () => {
+  const client = new Poe2TradeClient();
+  const originalPost = axios.post;
+  let capturedPayload: unknown;
+
+  axios.post = (async (...args: Parameters<typeof axios.post>) => {
+    capturedPayload = args[1];
+    return {
+      data: { id: "query-id", complexity: 0, result: [], total: 0 },
+    };
+  }) as unknown as typeof axios.post;
+
+  try {
+    await client.getItemByAttributes(
+      { baseType: "Fine Ring", corrupted: "false" },
+      "Standard",
+    );
+  } finally {
+    axios.post = originalPost;
+  }
+
+  const payload = capturedPayload as {
+    query: {
+      filters: {
+        misc_filters: {
+          filters: { corrupted: unknown };
+        };
+      };
+    };
+  };
+  expect(payload.query.filters.misc_filters.filters.corrupted).toEqual({
+    option: "false",
+  });
+});
+
 test("retries an empty strict search by allowing one selected modifier to miss", async () => {
   const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
   const searches: Poe2ItemSearch[] = [];
@@ -2527,6 +2562,45 @@ test("maps rare body armour to the body armour category", () => {
       },
     } as Poe2Item).category,
   ).toBe("armour.chest");
+});
+
+test("uses a copied plural item class before ambiguous base-type text", () => {
+  const cases = [
+    {
+      itemClass: "Body Armours",
+      baseType: "Experimental Ring Mail",
+      category: "armour.chest",
+    },
+    {
+      itemClass: "Two Hand Maces",
+      baseType: "Experimental Crusher",
+      category: "weapon.twomace",
+    },
+    {
+      itemClass: "Foci",
+      baseType: "Experimental Device",
+      category: "armour.focus",
+    },
+    {
+      itemClass: "Quarterstaves",
+      baseType: "Experimental Rod",
+      category: "weapon.warstaff",
+    },
+  ];
+
+  for (const { itemClass, baseType, category } of cases) {
+    expect(
+      getItemSearchMetadata({
+        origin: "clipboard",
+        item: {
+          rarity: "Rare",
+          typeLine: baseType,
+          baseType,
+          properties: [{ name: itemClass, values: [], displayMode: 0 }],
+        },
+      } as Poe2Item).category,
+    ).toBe(category);
+  }
 });
 
 test("uses the fetched item class to categorize every item search", () => {

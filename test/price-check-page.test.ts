@@ -56,6 +56,26 @@ test("identifies invalid copied item text with an actionable alert", () => {
   expect(markup).toContain("Retry price check</button>");
 });
 
+test("makes an active price check prominent beyond the submit button", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PriceCheckPageView, {
+      itemText: "copied item",
+      selectedLeague: "HC Runes of Aldur",
+      status: "checking",
+      shortcutStatus: { registered: true, shortcut: "Alt+Y" },
+      onItemTextChange: () => {},
+      onSubmit: () => {},
+    }),
+  );
+
+  expect(markup).toContain('data-checking="true"');
+  expect(markup).toContain('class="price-check-status__spinner"');
+  expect(markup).toContain("Checking price…");
+  expect(markup).toContain(
+    "Searching comparable listings in HC Runes of Aldur.",
+  );
+});
+
 test("shows the parsed item and comparable market evidence", () => {
   const item = parseCopiedItemText(`Item Class: Rings
 Rarity: Rare
