@@ -248,6 +248,21 @@
   display: none;
 }
 
+.product-navigation__version {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 14px;
+  border-left: 1px solid var(--line-soft);
+  color: #796f5e;
+  background: rgba(10, 10, 10, 0.3);
+  font-family: var(--ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 .primary-nav__link {
   position: relative;
   display: inline-flex;

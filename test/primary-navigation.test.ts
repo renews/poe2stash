@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import packageJson from "../package.json";
 import { PrimaryNavigation } from "../src/components/PrimaryNavigation";
 
 function renderMenu(accountName: string, pathname = "/") {
@@ -51,4 +52,13 @@ test("keeps live price checking available without an account", () => {
   expect(markup).toContain('href="/price-check"');
   expect(markup).toContain("Price Check");
   expect(markup).toContain('aria-current="page"');
+});
+
+test("shows the current app version at the far right of the header", () => {
+  const markup = renderMenu("BoostCoder#0407");
+  const versionLabel = `Poe Dash version ${packageJson.version}`;
+
+  expect(markup).toContain(`aria-label="${versionLabel}"`);
+  expect(markup).toContain(`>v${packageJson.version}<`);
+  expect(markup.indexOf(versionLabel)).toBeGreaterThan(markup.lastIndexOf("</nav>"));
 });

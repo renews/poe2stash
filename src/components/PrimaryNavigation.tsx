@@ -1,4 +1,5 @@
 import React from "react";
+import packageJson from "../../package.json";
 import {
   Coins,
   History as HistoryIcon,
@@ -71,5 +72,11 @@ export const PrimaryNavigation: React.FC<PrimaryNavigationProps> = ({
           <span>Settings</span>
         </NavLink>
       </nav>
+      <span
+        className="product-navigation__version"
+        aria-label={`Poe Dash version ${packageJson.version}`}
+      >
+        v{packageJson.version}
+      </span>
     </header>
   );
