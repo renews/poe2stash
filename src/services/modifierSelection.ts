@@ -1,5 +1,6 @@
 import {
   getDefaultRequiredLevelRange,
+  getItemRuneSocketCount,
   getItemRequiredLevel,
   isGemItem,
 } from "./PriceEstimator";
@@ -13,6 +14,9 @@ export function completeModifierSelection(
   const defaultRequiredLevelRange = isGemItem(item)
     ? undefined
     : getDefaultRequiredLevelRange(getItemRequiredLevel(item));
+  const runeSocketCount = isGemItem(item)
+    ? undefined
+    : getItemRuneSocketCount(item);
 
   return {
     implicit:
@@ -23,6 +27,12 @@ export function completeModifierSelection(
       selection?.enchant ?? (item.item.enchantMods || []).map(() => true),
     itemLevel: selection?.itemLevel === true,
     requiredLevel: selection?.requiredLevel === true,
+    ...(runeSocketCount !== undefined
+      ? {
+          runeSockets: selection?.runeSockets ?? runeSocketCount > 0,
+          runeSocketCount: selection?.runeSocketCount ?? runeSocketCount,
+        }
+      : {}),
     ...(defaultRequiredLevelRange
       ? {
           requiredLevelMin:

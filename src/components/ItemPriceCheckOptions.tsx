@@ -7,6 +7,7 @@ import {
 } from "../services/types";
 import {
   getDefaultRequiredLevelRange,
+  getItemRuneSocketCount,
   getItemRequiredLevel,
   isGemItem,
 } from "../services/PriceEstimator";
@@ -27,6 +28,12 @@ export function ItemPriceCheckOptions(props: {
   const defaultRequiredLevelRange = gemItem
     ? undefined
     : getDefaultRequiredLevelRange(getItemRequiredLevel(item));
+  const itemRuneSocketCount = gemItem
+    ? undefined
+    : getItemRuneSocketCount(item);
+  const runeSocketsSelected =
+    props.modifierSelection?.runeSockets ??
+    (itemRuneSocketCount !== undefined && itemRuneSocketCount > 0);
   const itemName =
     item.item.name || item.item.typeLine || item.item.baseType || "Item";
 
@@ -146,6 +153,47 @@ export function ItemPriceCheckOptions(props: {
               />
             </label>
           </div>
+        </div>
+      )}
+
+      {itemRuneSocketCount !== undefined && (
+        <div className="bg-gray-700 p-3 rounded-md">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-200">
+            <input
+              type="checkbox"
+              checked={runeSocketsSelected}
+              onChange={(event) =>
+                props.onModifierSelectionChange?.(
+                  getCompleteSelection({
+                    runeSockets: event.target.checked,
+                  }),
+                )
+              }
+              className="form-checkbox text-blue-600"
+            />
+            <span>Rune sockets (minimum)</span>
+          </label>
+          <input
+            aria-label="Minimum rune sockets"
+            type="number"
+            min="0"
+            step="1"
+            disabled={!runeSocketsSelected}
+            value={
+              props.modifierSelection?.runeSocketCount ?? itemRuneSocketCount
+            }
+            onChange={(event) =>
+              props.onModifierSelectionChange?.(
+                getCompleteSelection({
+                  runeSocketCount: Math.max(
+                    0,
+                    Math.round(Number(event.target.value)),
+                  ),
+                }),
+              )
+            }
+            className={`${formFieldClassName} mt-2 w-full disabled:cursor-not-allowed disabled:opacity-50`}
+          />
         </div>
       )}
 

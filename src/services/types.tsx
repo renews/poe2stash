@@ -355,6 +355,8 @@ export type ModifierSelection = {
   requiredLevel?: boolean;
   requiredLevelMin?: number;
   requiredLevelMax?: number;
+  runeSockets?: boolean;
+  runeSocketCount?: number;
 };
 
 export interface Poe2Item {

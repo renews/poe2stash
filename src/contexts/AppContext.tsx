@@ -111,7 +111,10 @@ function isModifierSelection(value: unknown): value is ModifierSelection {
     (selection.requiredLevel === undefined ||
       typeof selection.requiredLevel === "boolean") &&
     isOptionalFiniteNumber(selection.requiredLevelMin) &&
-    isOptionalFiniteNumber(selection.requiredLevelMax)
+    isOptionalFiniteNumber(selection.requiredLevelMax) &&
+    (selection.runeSockets === undefined ||
+      typeof selection.runeSockets === "boolean") &&
+    isOptionalFiniteNumber(selection.runeSocketCount)
   );
 }
 

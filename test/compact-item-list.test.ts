@@ -297,6 +297,7 @@ test("toggles compact price-check options without mutating existing state", () =
 test("shares the detailed modifier editor with the compact view", async () => {
   const item = createItem("mods", "Shop", "Doom Loop", 2, "chaos");
   item.item.ilvl = 82;
+  item.item.sockets = [{}, {}, {}];
   item.item.implicitMods = ["+10 to maximum Life"];
   item.item.explicitMods = [
     {
@@ -318,6 +319,8 @@ test("shares the detailed modifier editor with the compact view", async () => {
         implicit: [true],
         explicit: [true, false],
         itemLevel: false,
+        runeSockets: true,
+        runeSocketCount: 2,
       },
       onModifierSelectionChange: () => {},
     }),
@@ -334,6 +337,9 @@ test("shares the detailed modifier editor with the compact view", async () => {
 
   expect(markup).toContain('aria-label="Price check options for Doom Loop"');
   expect(markup).toContain("Item level (minimum): 82");
+  expect(markup).toContain("Rune sockets (minimum)");
+  expect(markup).toContain('aria-label="Minimum rune sockets"');
+  expect(markup).toContain('value="2"');
   expect(markup).toContain("Implicit Mods:");
   expect(markup).toContain("+10 to maximum Life");
   expect(markup).toContain("Explicit Mods:");

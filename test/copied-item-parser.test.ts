@@ -178,6 +178,98 @@ Adds 1 to 50 Lightning Damage
   );
 });
 
+test("normalizes a tier-prefixed normal item to its catalog base type", () => {
+  const item = parseCopiedItemText(`Item Class: Quarterstaves
+Rarity: Normal
+Exceptional Bolting Quarterstaff
+--------
+Physical Damage: 24-97
+Lightning Damage: 1-100 (lightning)
+Critical Hit Chance: 10.00%
+Attacks per Second: 1.40
+--------
+Requires: Level 78, 127 (unmet) Dex, 50 Int
+--------
+Sockets: S S S
+--------
+Item Level: 81`);
+
+  expect(item.item).toMatchObject({
+    name: "",
+    typeLine: "Exceptional Bolting Quarterstaff",
+    baseType: "Bolting Quarterstaff",
+    rarity: "Normal",
+    frameType: 0,
+    ilvl: 81,
+  });
+  expect(item.item.sockets).toHaveLength(3);
+  expect(item.item.properties).toContainEqual({
+    name: "Quarterstaves",
+    values: [],
+    displayMode: 0,
+  });
+});
+
+test("normalizes every Exceptional normal item before catalog fallback", () => {
+  const item = parseCopiedItemText(`Item Class: Quarterstaves
+Rarity: Normal
+Exceptional Future Quarterstaff
+--------
+Physical Damage: 24-97
+--------
+Item Level: 81`);
+
+  expect(item.item.typeLine).toBe("Exceptional Future Quarterstaff");
+  expect(item.item.baseType).toBe("Future Quarterstaff");
+});
+
+test("normalizes Exceptional equipment base types across rarities", () => {
+  const cases = [
+    {
+      rarity: "Magic",
+      header: "Exceptional Crackling Bolting Quarterstaff of the Brute",
+    },
+    {
+      rarity: "Rare",
+      header: "Doom Branch\nExceptional Bolting Quarterstaff",
+    },
+    {
+      rarity: "Unique",
+      header: "Future Relic\nExceptional Bolting Quarterstaff",
+    },
+  ];
+
+  for (const { rarity, header } of cases) {
+    const item = parseCopiedItemText(`Item Class: Quarterstaves
+Rarity: ${rarity}
+${header}
+--------
+Physical Damage: 24-97
+--------
+Item Level: 81`);
+
+    expect(item.item.baseType).toBe("Bolting Quarterstaff");
+  }
+});
+
+test("excludes in-game listing notes from item modifiers", () => {
+  for (const label of ["Note", "Notes"]) {
+    const item = parseCopiedItemText(`Item Class: Quarterstaves
+Rarity: Normal
+Bolting Quarterstaff
+--------
+Physical Damage: 24-97
+--------
+Item Level: 81
+--------
+${label}: xyz`);
+
+    expect(item.item.explicitMods).toEqual([]);
+    expect(item.item.implicitMods).toEqual([]);
+    expect(item.item.enchantMods).toEqual([]);
+  }
+});
+
 test("parses copied stackable currency by its fixed identity", () => {
   const item = parseCopiedItemText(`Item Class: Stackable Currency
 Rarity: Currency

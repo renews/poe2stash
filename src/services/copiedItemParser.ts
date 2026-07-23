@@ -94,6 +94,35 @@ function resolveKnownBaseType(displayName: string) {
   );
 }
 
+function resolveEquipmentBaseType(
+  displayName: string,
+  allowUnknownBaseType: boolean,
+) {
+  const withoutTierPrefix = displayName.replace(/^Exceptional\s+/i, "");
+  return (
+    resolveKnownBaseType(withoutTierPrefix) ||
+    (allowUnknownBaseType ? withoutTierPrefix : undefined)
+  );
+}
+
+function isListingNote(line: string) {
+  return /^Notes?:\s*/i.test(line);
+}
+
+function parseRuneSockets(lines: string[]) {
+  const socketsLine = lines.find((line) => /^Sockets:\s*/i.test(line));
+  if (!socketsLine) {
+    return undefined;
+  }
+
+  const count = socketsLine.match(/\bS\b/gi)?.length || 0;
+  return Array.from({ length: count }, () => ({}));
+}
+
+function isItemMetadata(line: string) {
+  return isListingNote(line) || /^Sockets:\s*/i.test(line);
+}
+
 function parseCopiedItemProperty(line: string) {
   const match = line.match(/^([^:]+):\s*(.+)$/);
   const name = match?.[1]?.trim();
@@ -126,14 +155,16 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
       ? displayName
       : "";
   const typeLine = hasSeparateBaseType ? header[rarityIndex + 2] : displayName;
+  const equipmentBaseTypeSource = hasSeparateBaseType ? typeLine : displayName;
   const baseType =
-    rarity === "Gem" || rarity === "Currency" || rarity === "Normal"
+    rarity === "Gem" || rarity === "Currency"
       ? displayName
-      : hasSeparateBaseType
-        ? typeLine
-        : displayName
-          ? resolveKnownBaseType(displayName)
-          : undefined;
+      : equipmentBaseTypeSource
+        ? resolveEquipmentBaseType(
+            equipmentBaseTypeSource,
+            rarity !== "Magic",
+          )
+        : undefined;
 
   const frameType = rarity ? FRAME_TYPE_BY_RARITY[rarity] : undefined;
   if (
@@ -170,6 +201,7 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
     .find((line) => /^Quality:\s*[+-]?\d+%/i.test(line))
     ?.match(/[+-]?\d+/)?.[0];
   const qualityValue = quality ? Number(quality) : undefined;
+  const sockets = parseRuneSockets(propertyLines);
 
   for (const section of sections.slice(1)) {
     const requiredLine = section.find((line) => line.startsWith("Requires:"));
@@ -194,9 +226,14 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
       continue;
     }
 
+    const modifierLines = section.filter((line) => !isItemMetadata(line));
+    if (!modifierLines.length) {
+      continue;
+    }
+
     if (advancedCopy) {
       let modifierType: "implicit" | "explicit" | "enchant" = "explicit";
-      for (const line of section) {
+      for (const line of modifierLines) {
         if (/^\{.+Modifier.+\}$/.test(line)) {
           modifierType = /Implicit Modifier/i.test(line)
             ? "implicit"
@@ -205,7 +242,7 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
               : "explicit";
           continue;
         }
-        if (!section.some((entry) => /^\{.+Modifier.+\}$/.test(entry))) {
+        if (!modifierLines.some((entry) => /^\{.+Modifier.+\}$/.test(entry))) {
           continue;
         }
         const modifier = normalizeModifier(line);
@@ -220,12 +257,14 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
       continue;
     }
 
-    if (section.some((line) => line.endsWith("(implicit)"))) {
-      implicitMods.push(...section.map(normalizeModifier));
-    } else if (section.some((line) => /\s+\((?:rune|enchant)\)$/i.test(line))) {
-      enchantMods.push(...section.map(normalizeModifier));
+    if (modifierLines.some((line) => line.endsWith("(implicit)"))) {
+      implicitMods.push(...modifierLines.map(normalizeModifier));
+    } else if (
+      modifierLines.some((line) => /\s+\((?:rune|enchant)\)$/i.test(line))
+    ) {
+      enchantMods.push(...modifierLines.map(normalizeModifier));
     } else if (!parsedSimpleExplicitSection) {
-      explicitMods.push(...section.map(normalizeModifier));
+      explicitMods.push(...modifierLines.map(normalizeModifier));
       parsedSimpleExplicitSection = true;
     }
   }
@@ -254,6 +293,7 @@ export function parseCopiedItemText(rawText: string): Poe2Item {
       id,
       ...(gemLevel ? { gemLevel: Number(gemLevel) } : {}),
       ...(qualityValue !== undefined ? { quality: qualityValue } : {}),
+      ...(sockets ? { sockets } : {}),
       name,
       typeLine: typeLine || baseType,
       baseType,

@@ -891,6 +891,60 @@ test("includes item level for non-gems but not gems", () => {
   });
 });
 
+test("uses a socketed item's count by default and allows an editable minimum", async () => {
+  const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
+  const capturedSearches: Poe2ItemSearch[] = [];
+  const item = {
+    id: "socketed-item",
+    item: {
+      frameType: 0,
+      rarity: "Normal",
+      typeLine: "Bolting Quarterstaff",
+      baseType: "Bolting Quarterstaff",
+      sockets: [{}, {}, {}],
+      properties: [
+        { name: "Quarterstaves", values: [], displayMode: 0 },
+      ],
+      explicitMods: [],
+      implicitMods: [],
+    },
+  } as Poe2Item;
+
+  Poe2Trade.getItemByAttributes = async (searchParams) => {
+    capturedSearches.push(searchParams);
+    return {
+      id: "query-id",
+      complexity: 0,
+      result: ["comparable-item"],
+      total: 1,
+    };
+  };
+
+  try {
+    expect(getItemSearchMetadata(item)).toMatchObject({ runeSocketCount: 3 });
+
+    await PriceChecker.findMatchingItem(item, "Standard");
+    await PriceChecker.findMatchingItem(item, "Standard", {
+      explicit: [],
+      implicit: [],
+      runeSockets: true,
+      runeSocketCount: 2,
+    });
+    await PriceChecker.findMatchingItem(item, "Standard", {
+      explicit: [],
+      implicit: [],
+      runeSockets: false,
+      runeSocketCount: 2,
+    });
+
+    expect(capturedSearches[0]).toMatchObject({ rune_sockets: 3 });
+    expect(capturedSearches[1]).toMatchObject({ rune_sockets: 2 });
+    expect(capturedSearches[2]).not.toHaveProperty("rune_sockets");
+  } finally {
+    Poe2Trade.getItemByAttributes = originalGetItemByAttributes;
+  }
+});
+
 test("adds an optional minimum and maximum required-level filter for non-gems", async () => {
   const originalGetItemByAttributes = Poe2Trade.getItemByAttributes;
   let capturedSearch: Poe2ItemSearch | undefined;
@@ -1133,7 +1187,7 @@ test("serializes pseudo filters into the trade stat group", () => {
   ]);
 });
 
-test("serializes required-level ranges and relaxed stat groups", async () => {
+test("serializes requirement, rune socket, and relaxed stat filters", async () => {
   const client = new Poe2TradeClient();
   const originalPost = axios.post;
   let capturedPayload: unknown;
@@ -1151,6 +1205,7 @@ test("serializes required-level ranges and relaxed stat groups", async () => {
         baseType: "Fine Ring",
         lvl: 60,
         lvl_max: 70,
+        rune_sockets: 2,
         explicit: [
           { id: "explicit.stat_1", min: 10, max: 20 },
           { id: "explicit.stat_2", min: 30, max: 40 },
@@ -1173,6 +1228,9 @@ test("serializes required-level ranges and relaxed stat groups", async () => {
       }>;
       filters: {
         req_filters: { filters: { lvl: { min: number; max: number } } };
+        equipment_filters: {
+          filters: { rune_sockets: { min: number } };
+        };
       };
     };
   };
@@ -1184,6 +1242,9 @@ test("serializes required-level ranges and relaxed stat groups", async () => {
     min: 60,
     max: 70,
   });
+  expect(
+    payload.query.filters.equipment_filters.filters.rune_sockets,
+  ).toEqual({ min: 2 });
 });
 
 test("serializes the copied-item corruption state as an option filter", async () => {
@@ -1549,6 +1610,7 @@ test("uses the Search result set for price estimates", async () => {
       id: "item-id",
       baseType: "Fine Ring",
       corrupted: false,
+      sockets: [{}, {}, {}],
       explicitMods: ["100 to maximum Life", "50% increased Attack Speed"],
       implicitMods: [],
       enchantMods: [
@@ -1561,6 +1623,8 @@ test("uses the Search result set for price estimates", async () => {
     implicit: [],
     enchant: [true],
     itemLevel: false,
+    runeSockets: true,
+    runeSocketCount: 2,
   };
   const searchArguments: unknown[][] = [];
   const pricedIds: string[][] = [];
@@ -1621,6 +1685,7 @@ test("uses the Search result set for price estimates", async () => {
       enchantCount: 1,
       enchantHashes: ["rune.stat_1805633363"],
       corrupted: "false",
+      runeSocketCount: 2,
     });
   } finally {
     PriceChecker.findMatchingItem = originalFindMatchingItem;
@@ -3378,6 +3443,50 @@ test("matches cached estimates with the selected required-level range", () => {
       requiredLevel: false,
       requiredLevelMin: 60,
       requiredLevelMax: 70,
+    }),
+  ).toBe(false);
+});
+
+test("matches cached estimates with the selected rune socket minimum", () => {
+  const item = {
+    item: {
+      sockets: [{}, {}, {}],
+      explicitMods: [],
+      implicitMods: [],
+    },
+  } as Poe2Item;
+  const estimate = {
+    search: {
+      explicitHashes: [],
+      implicitHashes: [],
+      enchantHashes: [],
+      runeSocketCount: 2,
+      modifierComparisonVersion: MODIFIER_COMPARISON_VERSION,
+    },
+  } as Estimate;
+
+  expect(
+    PriceChecker.matchesModifierSelection(item, estimate, {
+      explicit: [],
+      implicit: [],
+      runeSockets: true,
+      runeSocketCount: 2,
+    }),
+  ).toBe(true);
+  expect(
+    PriceChecker.matchesModifierSelection(item, estimate, {
+      explicit: [],
+      implicit: [],
+      runeSockets: true,
+      runeSocketCount: 3,
+    }),
+  ).toBe(false);
+  expect(
+    PriceChecker.matchesModifierSelection(item, estimate, {
+      explicit: [],
+      implicit: [],
+      runeSockets: false,
+      runeSocketCount: 2,
     }),
   ).toBe(false);
 });

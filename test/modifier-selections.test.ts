@@ -12,6 +12,8 @@ test("restores valid modifier selections and ignores invalid saved entries", () 
           requiredLevel: true,
           requiredLevelMin: 60,
           requiredLevelMax: 70,
+          runeSockets: true,
+          runeSocketCount: 2,
         },
         invalid: { explicit: "not-an-array", implicit: [] },
       }),
@@ -24,6 +26,8 @@ test("restores valid modifier selections and ignores invalid saved entries", () 
       requiredLevel: true,
       requiredLevelMin: 60,
       requiredLevelMax: 70,
+      runeSockets: true,
+      runeSocketCount: 2,
     },
   });
 });
@@ -37,6 +41,21 @@ test("ignores saved modifier selections with invalid requirement ranges", () => 
           implicit: [],
           requiredLevel: true,
           requiredLevelMin: "sixty",
+        },
+      }),
+    ),
+  ).toEqual({});
+});
+
+test("ignores saved modifier selections with invalid rune socket counts", () => {
+  expect(
+    parseModifierSelections(
+      JSON.stringify({
+        invalid: {
+          explicit: [],
+          implicit: [],
+          runeSockets: true,
+          runeSocketCount: "three",
         },
       }),
     ),

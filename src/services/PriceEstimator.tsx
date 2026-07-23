@@ -79,6 +79,7 @@ export type Estimate = {
     itemLevel?: number;
     requiredLevelMin?: number;
     requiredLevelMax?: number;
+    runeSocketCount?: number;
     strategy?:
       | "market-properties"
       | "market-pseudos"
@@ -113,7 +114,7 @@ export const DEFAULT_MINIMUM_INDEPENDENT_SELLERS = 1;
 export const DEFAULT_MINIMUM_TRADE_LISTINGS = 20;
 export const DEFAULT_MAX_TRADE_LISTINGS = 100;
 export const CURRENCY_RATE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-export const MODIFIER_COMPARISON_VERSION = 9;
+export const MODIFIER_COMPARISON_VERSION = 10;
 
 const CURRENCY_IDS = ["exalted", "chaos", "divine", "mirror"] as const;
 const SUPPORTED_TRADE_RARITIES = new Set([
@@ -845,6 +846,34 @@ export function getItemRequiredLevel(item: Poe2Item) {
   return numericValue === undefined ? undefined : Number(numericValue);
 }
 
+export function getItemRuneSocketCount(item: Poe2Item) {
+  return Array.isArray(item.item?.sockets)
+    ? item.item.sockets.length
+    : undefined;
+}
+
+function normalizeRuneSocketCount(value: number | undefined, fallback: number) {
+  return Math.max(
+    0,
+    Math.round(Number.isFinite(value) ? (value as number) : fallback),
+  );
+}
+
+export function getRuneSocketSearchMinimum(
+  runeSocketCount: number | undefined,
+  selection?: ModifierSelection,
+) {
+  if (selection?.runeSockets === false) {
+    return undefined;
+  }
+
+  const minimum = normalizeRuneSocketCount(
+    selection?.runeSocketCount,
+    runeSocketCount || 0,
+  );
+  return minimum > 0 ? minimum : undefined;
+}
+
 export function getItemSearchMetadata(item: Poe2Item) {
   const frameRarities: Record<number, string> = {
     0: "normal",
@@ -859,6 +888,7 @@ export function getItemSearchMetadata(item: Poe2Item) {
   const quality = item.item?.quality ?? getNumericItemProperty(item, "Quality");
   const isGem = isGemItem(item);
   const requiredLevel = isGem ? undefined : getItemRequiredLevel(item);
+  const runeSocketCount = isGem ? undefined : getItemRuneSocketCount(item);
   const normalizedRarity = rawRarity?.toLowerCase();
   const rarity =
     !isGem && normalizedRarity && SUPPORTED_TRADE_RARITIES.has(normalizedRarity)
@@ -878,6 +908,7 @@ export function getItemSearchMetadata(item: Poe2Item) {
       ? { itemLevel: item.item.ilvl }
       : {}),
     ...(requiredLevel !== undefined ? { requiredLevel } : {}),
+    ...(runeSocketCount !== undefined ? { runeSocketCount } : {}),
     ...(gemLevel !== undefined ? { gemLevel } : {}),
     ...(quality !== undefined ? { quality } : {}),
     ...(item.origin === "clipboard"
@@ -944,6 +975,7 @@ export function getItemSearchFilters(
     itemLevel?: number;
     gemLevel?: number;
     quality?: number;
+    runeSocketCount?: number;
   },
   includeItemLevel = false,
   requiredLevelRange?: RequiredLevelRange,
@@ -960,6 +992,9 @@ export function getItemSearchFilters(
       : {}),
     ...(requiredLevelRange
       ? { lvl: requiredLevelRange.min, lvl_max: requiredLevelRange.max }
+      : {}),
+    ...(metadata.runeSocketCount !== undefined
+      ? { rune_sockets: metadata.runeSocketCount }
       : {}),
   };
 }
@@ -1055,6 +1090,13 @@ class PriceEstimator {
           metadata.requiredLevel,
           modifierSelection,
         );
+    const runeSocketCount = gem
+      ? undefined
+      : getRuneSocketSearchMinimum(
+          metadata.runeSocketCount,
+          modifierSelection,
+        );
+    const searchMetadata = { ...metadata, runeSocketCount };
 
     const desiredComparableCount = Math.max(
       1,
@@ -1071,7 +1113,7 @@ class PriceEstimator {
 
     const awakenedSearch = getAwakenedRareSearch(
       item,
-      metadata,
+      searchMetadata,
       selectedExplicits,
       selectedImplicits,
       selectedEnchants,
@@ -1165,7 +1207,7 @@ class PriceEstimator {
 
     const strictSearch = await this.getComparableSearchParams(
       item,
-      metadata,
+      searchMetadata,
       selectedExplicits,
       selectedImplicits,
       selectedEnchants,
@@ -1271,6 +1313,12 @@ class PriceEstimator {
           metadata.requiredLevel,
           modifierSelection,
         );
+    const runeSocketCount = gem
+      ? undefined
+      : getRuneSocketSearchMinimum(
+          metadata.runeSocketCount,
+          modifierSelection,
+        );
     console.log("Estimating price for item in league:", league);
 
     const currency = "exalted";
@@ -1366,6 +1414,7 @@ class PriceEstimator {
             selectedImplicits,
             selectedEnchants,
             modifierRangePercent,
+            runeSocketCount,
           );
           fallbackEstimate.sourceComparableCount = allPrices.length;
           return this.finishEstimate(
@@ -1409,6 +1458,7 @@ class PriceEstimator {
               requiredLevelMax: requiredLevelRange.max,
             }
           : {}),
+        ...(runeSocketCount !== undefined ? { runeSocketCount } : {}),
         ...(tradeSearch?.strategy
           ? {
               strategy: tradeSearch.strategy,
@@ -1478,6 +1528,7 @@ class PriceEstimator {
     selectedImplicits: ParsedItemMod[],
     selectedEnchants: ParsedItemMod[],
     modifierRangePercent: number,
+    runeSocketCount?: number,
   ): Estimate {
     return {
       checkedAt: Date.now(),
@@ -1506,6 +1557,7 @@ class PriceEstimator {
         implicitHashes: selectedImplicits.map((modifier) => modifier.hash),
         enchantHashes: selectedEnchants.map((modifier) => modifier.hash),
         ...(metadata.corrupted ? { corrupted: metadata.corrupted } : {}),
+        ...(runeSocketCount !== undefined ? { runeSocketCount } : {}),
         modifierRangePercent: normalizeModifierRangePercent(
           modifierRangePercent,
         ),
@@ -1731,6 +1783,16 @@ class PriceEstimator {
       return false;
     }
 
+    const selectedRuneSocketCount = isGemItem(item)
+      ? undefined
+      : getRuneSocketSearchMinimum(
+          metadata.runeSocketCount,
+          modifierSelection,
+        );
+    if (estimate.search?.runeSocketCount !== selectedRuneSocketCount) {
+      return false;
+    }
+
     const parsedMods = this.parseItemMods(item);
     const selectedExplicits = selectSelectedModifiers(
       parsedMods.explicits || [],
@@ -1751,7 +1813,7 @@ class PriceEstimator {
     ) {
       const marketSearch = getAwakenedRareSearch(
         item,
-        metadata,
+        { ...metadata, runeSocketCount: selectedRuneSocketCount },
         selectedExplicits,
         selectedImplicits,
         selectedEnchants,
