@@ -65,6 +65,14 @@ test("publishes every desktop artifact for version tags", async () => {
   expect(readme).toContain("macOS DMG");
 });
 
+test("builds artifacts without electron-builder publishing implicitly in CI", async () => {
+  const packageJson = await Bun.file(
+    `${import.meta.dir}/../package.json`,
+  ).json();
+
+  expect(packageJson.scripts.build).toEndWith("electron-builder --publish never");
+});
+
 test("uses the official Divine Orb artwork for the application icon", async () => {
   const [runtimeIcon, bundleIcon] = await Promise.all([
     Bun.file(`${import.meta.dir}/../public/poe-dash-icon.png`).arrayBuffer(),
